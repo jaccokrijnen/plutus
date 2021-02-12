@@ -76,26 +76,26 @@
   //
   # We need to lift this let-binding out far enough, otherwise it can get evaluated several times!
 (
-  let hspkgs = haskell-nix.cabalProject {
-    src = fetchFromGitHub {
-      owner = "haskell";
-      repo = "haskell-language-server";
-      rev = "0.8.0";
-      sha256 = "0p6fqs07lajbi2g1wf4w3j5lvwknnk58n12vlg48cs4iz25gp588";
-      fetchSubmodules = true;
-    };
+  let project = haskell-nix.hackage-project {
+    name = "haskell-language-server";
+    version = "0.9.0.0";
     inherit compiler-nix-name checkMaterialization;
-    # Plan issues with the benchmarks, can try removing later
-    configureArgs = "--disable-benchmarks";
+    # Pin index-state for now as the latest hackage version is broken (needs metadata revisions)
+    index-state = "2021-02-08T00:00:00Z";
     # Invalidate and update if you change the version
-    plan-sha256 =
-      # See https://github.com/input-output-hk/nix-tools/issues/97
-      if stdenv.isLinux
-      then "07p6z6jb87k8n0ihwxb8rdnjb7zddswds3pxca9dzsw47rd9czyd"
-      else "1s3cn381945hrs1fchg6bbkcf3abi0miqzc30bgpbfj23a8lhj2q";
+    plan-sha256 = "17hyrl0kj3gr4lpshggj8a911kzi94lgday54nsb7143ziz7a7xy";
     modules = [{
       packages.ghcide.patches = [ ../../patches/ghcide_partial_iface.patch ];
+      # For some reason, v0.7.3 of ghcide (which is used here) was uploaded with windows line endings,
+      # which makes our patch not apply. So I switched the line endings on the patch,
+      # but then we apparently need these flags to make patch not be confused.
+      # (see https://github.com/NixOS/nixpkgs/issues/52919 for the trick)
+      # Probably ghcide will go back to having unix line endings in the future, at
+      # which point delete this setting and do dos2unix on the patch file.
+      packages.ghcide.postUnpack = ''
+        patchFlags="--binary -p1"
+      '';
     }];
   };
-  in { inherit (hspkgs) haskell-language-server hie-bios implicit-hie; }
+  in { inherit (project.hsPkgs) haskell-language-server hie-bios implicit-hie; }
 )
