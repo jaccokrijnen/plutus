@@ -329,7 +329,7 @@ runCompiler opts expr = do
     let phase name = "\n" ++ replicate 20 '=' ++ " " ++ name ++ replicate 20 '=' ++ "\n"
     -- let dumpPLC name ast = liftIO . putStrLn $ phase name ++ (show (PP.pretty ast))
     -- let dumpPIR name ast = liftIO . putStrLn $ phase name ++ (show ast)
-    let dumpPIR' name ast = liftIO . putStrLn $ phase name ++ dump ast
+    let dumpPIR' name ast = liftIO . putStrLn $ phase name ++ toCoq ast
 
     -- GHC.Core -> Pir translation.
     pirT <- PIR.runDefT () $ compileExprWithDefs expr
@@ -343,7 +343,7 @@ runCompiler opts expr = do
     (plcT, passes') <- flip runReaderT pirCtx $ PIR.compileReadableToPlc' spirT
 
     when (poDumpPir opts) $
-      liftIO . writeFile "compilation-trace" . dump $ PIR.CompilationTrace t_0 (passes ++ passes')
+      liftIO . writeFile "compilation-trace" . toCoq $ PIR.CompilationTrace t_0 (passes ++ passes')
 
     let plcP = PLC.Program () (PLC.defaultVersion ()) $ void plcT
     -- when (poDumpPlc opts) $ dumpPLC "PLC (Program)" plcP
@@ -363,8 +363,8 @@ runCompiler opts expr = do
         -- also wrap the PLC Error annotations into Original provenances, to match our expected 'CompileError'
         liftEither $ first (view (re PIR._PLCError) . fmap PIR.Original) plcTcError
 
-class Dumpable a where
-  dump :: a -> String
+class ToCoq a where
+  toCoq :: a -> String
 
 apps :: String -> [String] -> String
 apps f xs = List.intercalate " " (f : fmap parens xs)
@@ -372,139 +372,141 @@ apps f xs = List.intercalate " " (f : fmap parens xs)
 
 -- TODO: Write these instances with generics
 instance
-  ( Dumpable name
-  , Dumpable tyname
-  , Dumpable fun
-  , forall b. Dumpable (uni b)
+  ( ToCoq name
+  , ToCoq tyname
+  , ToCoq fun
+  , forall b. ToCoq (uni b)
   , PLC.Closed uni
-  , PLC.Everywhere uni Dumpable
+  , PLC.Everywhere uni ToCoq
   ) =>
-  Dumpable (PIR.Term name tyname uni fun a) where
-  dump = \case
-    PIR.Let _ rec bindings t  -> apps "Let"    [dump rec, dump bindings, dump t]
-    PIR.Var _ name            -> apps "Var"    [dump name]
-    PIR.TyAbs _ tyname kind t -> apps "TyAbs"  [dump tyname, dump kind, dump t]
-    PIR.LamAbs _ name ty t    -> apps "LamAbs" [dump name, dump ty, dump t]
-    PIR.Apply _ t1 t2         -> apps "Apply"  [dump t1, dump t2]
-    PIR.Constant _ val        -> apps "Constant" [dump val]
-    PIR.Builtin _ fun         -> apps "Builtin" [dump fun]
-    PIR.TyInst _ term ty      -> apps "TyInst" [dump term, dump ty]
-    PIR.Error _ ty            -> apps "Error" [dump ty]
-    PIR.IWrap _ ty1 ty2 t     -> apps "IWrap" [dump ty1, dump ty2, dump t]
-    PIR.Unwrap _ t            -> apps "Unwrap" [dump t]
+  ToCoq (PIR.Term name tyname uni fun a) where
+  toCoq = \case
+    PIR.Let _ rec bindings t  -> apps "Let"    [toCoq rec, toCoq bindings, toCoq t]
+    PIR.Var _ name            -> apps "Var"    [toCoq name]
+    PIR.TyAbs _ tyname kind t -> apps "TyAbs"  [toCoq tyname, toCoq kind, toCoq t]
+    PIR.LamAbs _ name ty t    -> apps "LamAbs" [toCoq name, toCoq ty, toCoq t]
+    PIR.Apply _ t1 t2         -> apps "Apply"  [toCoq t1, toCoq t2]
+    PIR.Constant _ val        -> apps "Constant" [toCoq val]
+    PIR.Builtin _ fun         -> apps "Builtin" [toCoq fun]
+    PIR.TyInst _ term ty      -> apps "TyInst" [toCoq term, toCoq ty]
+    PIR.Error _ ty            -> apps "Error" [toCoq ty]
+    PIR.IWrap _ ty1 ty2 t     -> apps "IWrap" [toCoq ty1, toCoq ty2, toCoq t]
+    PIR.Unwrap _ t            -> apps "Unwrap" [toCoq t]
 
-instance (forall a. Dumpable (f a)) => Dumpable (PLC.Some f) where
-  dump (PLC.Some x) = apps "Some" [dump x]
-instance (Dumpable (uni a), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PLC.ValueOf uni a) where
-  dump (PLC.ValueOf uni x) = PLC.bring (Proxy @Dumpable) uni $ apps "ValueOf" [dump uni, dump x] -- (PLC.ValueOf ev x) = apps "ValueOf" [dump ev, dump x]
+instance (forall a. ToCoq (f a)) => ToCoq (PLC.Some f) where
+  toCoq (PLC.Some x) = apps "Some" [toCoq x]
+instance (ToCoq (uni a), PLC.Closed uni, PLC.Everywhere uni ToCoq) => ToCoq (PLC.ValueOf uni a) where
+  toCoq (PLC.ValueOf uni x) = PLC.bring (Proxy @ToCoq) uni $ apps "ValueOf" [toCoq uni, toCoq x] -- (PLC.ValueOf ev x) = apps "ValueOf" [toCoq ev, toCoq x]
 
-instance Dumpable (PLC.DefaultUni a) where
-  dump PLC.DefaultUniInteger    = "DefaultUniInteger"
-  dump PLC.DefaultUniByteString = "DefaultUniByteString"
-  dump PLC.DefaultUniString     = "DefaultUniString"
-  dump PLC.DefaultUniChar       = "DefaultUniChar"
-  dump PLC.DefaultUniUnit       = "DefaultUniUnit"
-  dump PLC.DefaultUniBool       = "DefaultUniBool"
+instance ToCoq (PLC.DefaultUni a) where
+  toCoq PLC.DefaultUniInteger    = "DefaultUniInteger"
+  toCoq PLC.DefaultUniByteString = "DefaultUniByteString"
+  toCoq PLC.DefaultUniString     = "DefaultUniString"
+  toCoq PLC.DefaultUniChar       = "DefaultUniChar"
+  toCoq PLC.DefaultUniUnit       = "DefaultUniUnit"
+  toCoq PLC.DefaultUniBool       = "DefaultUniBool"
 
-instance Dumpable Bool where
-  dump True  = "true"
-  dump False = "false"
+instance ToCoq Bool where
+  toCoq True  = "true"
+  toCoq False = "false"
 
-instance Dumpable () where dump () = "tt"
-instance Dumpable T.Text where dump = show
-instance Dumpable String where dump = show
-instance Dumpable Int where dump = show
-instance Dumpable Integer where dump = show
-instance Dumpable Char where dump = show
-instance Dumpable BS.ByteString where dump = show
+instance ToCoq () where toCoq () = "tt"
+instance ToCoq T.Text where toCoq = show
+instance ToCoq String where toCoq = show
+instance ToCoq Int where toCoq = show
+instance ToCoq Integer where toCoq = show
+instance ToCoq Char where toCoq = show
+instance ToCoq BS.ByteString where toCoq = show
 
-instance (Dumpable tyname, Dumpable name, Dumpable fun, PLC.Closed uni, PLC.Everywhere uni Dumpable, forall b. Dumpable (uni b)) =>
-  Dumpable (PIR.Binding tyname name uni fun a) where
-  dump (PIR.TermBind _ strictness vdecl t) = apps "TermBind"     [dump strictness, dump vdecl, dump t]
-  dump (PIR.TypeBind _ tvdecl ty)          = apps "TypeBind"     [dump tvdecl, dump ty]
-  dump (PIR.DatatypeBind _ dt)             = apps "DatatypeBind" [dump dt]
-instance (Dumpable name, Dumpable tyname, PLC.Closed uni, PLC.Everywhere uni Dumpable, forall b. Dumpable (uni b)) => Dumpable (PIR.VarDecl tyname name uni fun a) where
-  dump (PIR.VarDecl _ name ty) = apps "VarDecl" [dump name, dump ty]
-instance (Dumpable tyname) => Dumpable (PIR.TyVarDecl tyname a) where
-  dump (PIR.TyVarDecl _ name kind) = apps "TyVarDecl" [dump name, dump kind]
+instance (ToCoq tyname, ToCoq name, ToCoq fun, PLC.Closed uni, PLC.Everywhere uni ToCoq, forall b. ToCoq (uni b)) =>
+  ToCoq (PIR.Binding tyname name uni fun a) where
+  toCoq (PIR.TermBind _ strictness vdecl t) = apps "TermBind"     [toCoq strictness, toCoq vdecl, toCoq t]
+  toCoq (PIR.TypeBind _ tvdecl ty)          = apps "TypeBind"     [toCoq tvdecl, toCoq ty]
+  toCoq (PIR.DatatypeBind _ dt)             = apps "DatatypeBind" [toCoq dt]
+instance (ToCoq name, ToCoq tyname, PLC.Closed uni, PLC.Everywhere uni ToCoq, forall b. ToCoq (uni b)) => ToCoq (PIR.VarDecl tyname name uni fun a) where
+  toCoq (PIR.VarDecl _ name ty) = apps "VarDecl" [toCoq name, toCoq ty]
+instance (ToCoq tyname) => ToCoq (PIR.TyVarDecl tyname a) where
+  toCoq (PIR.TyVarDecl _ name kind) = apps "TyVarDecl" [toCoq name, toCoq kind]
 
 -- Awful newtype workaround to expose the arity of constructors
 -- (need this to verify Scott encoding)
 newtype Constructor tyname name uni fun a = Constructor (PIR.VarDecl tyname name uni fun a)
 
-instance (Dumpable tyname, Dumpable name, PLC.Everywhere uni Dumpable, PLC.Closed uni, forall b. Dumpable (uni b)) => Dumpable (Constructor tyname name uni fun a) where
-  dump (Constructor vd@(PIR.VarDecl _ name ty)) = apps "Constructor" [dump vd, dump (arity ty)]
+instance (ToCoq tyname, ToCoq name, PLC.Everywhere uni ToCoq, PLC.Closed uni, forall b. ToCoq (uni b)) => ToCoq (Constructor tyname name uni fun a) where
+  toCoq (Constructor vd@(PIR.VarDecl _ name ty)) = apps "Constructor" [toCoq vd, toCoq (arity ty)]
     where
       arity :: PIR.Type tyname uni a -> Int
       arity (PIR.TyFun _ _a b) = 1 + arity b
       arity _                  = 0
 
-instance (Dumpable name, Dumpable tyname, forall b. Dumpable (uni b), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PIR.Datatype tyname name uni fun a) where
-  dump (PIR.Datatype _ tvdecl tvdecls name constructors) = apps "Datatype" [dump tvdecl, dump tvdecls, dump name, dump (List.map Constructor constructors)]
-instance Dumpable (PLC.TyName) where dump (PLC.TyName name) = apps "TyName" [dump name]
+instance (ToCoq name, ToCoq tyname, forall b. ToCoq (uni b), PLC.Closed uni, PLC.Everywhere uni ToCoq) => ToCoq (PIR.Datatype tyname name uni fun a) where
+  toCoq (PIR.Datatype _ tvdecl tvdecls name constructors) = apps "Datatype" [toCoq tvdecl, toCoq tvdecls, toCoq name, toCoq (List.map Constructor constructors)]
+instance ToCoq (PLC.TyName) where toCoq (PLC.TyName name) = apps "TyName" [toCoq name]
 
 
-instance Dumpable a => Dumpable (NonEmpty.NonEmpty a) where
-  dump (x NonEmpty.:| xs) = apps "cons" [dump x, dump xs]
+instance ToCoq a => ToCoq (NonEmpty.NonEmpty a) where
+  toCoq (x NonEmpty.:| xs) = apps "cons" [toCoq x, toCoq xs]
 
-instance {-# OVERLAPPABLE #-} Dumpable a => Dumpable [a] where
-  dump []     = "nil"
-  dump (x:xs) = apps "cons" [dump x, dump xs]
-instance (Dumpable a, Dumpable b) => Dumpable (a, b) where
-  dump (a, b) = "(" ++ dump a ++ "," ++ dump b ++ ")"
+instance {-# OVERLAPPABLE #-} ToCoq a => ToCoq [a] where
+  toCoq []     = "nil"
+  toCoq (x:xs) = apps "cons" [toCoq x, toCoq xs]
+instance (ToCoq a, ToCoq b) => ToCoq (a, b) where
+  toCoq (a, b) = "(" ++ toCoq a ++ "," ++ toCoq b ++ ")"
 
-instance Dumpable PLC.Name where dump (PLC.Name str uniq) = apps "Name" [dump str, dump uniq]
-instance Dumpable PLC.Unique where dump (PLC.Unique n) = apps "Unique" [dump n]
-instance Dumpable PLC.DefaultFun where dump = show
-instance Dumpable PIR.Strictness where dump = show
-instance Dumpable PIR.Recursivity where dump = show
+instance ToCoq PLC.Name where toCoq (PLC.Name str uniq) = apps "Name" [toCoq str, toCoq uniq]
+instance ToCoq PLC.Unique where toCoq (PLC.Unique n) = apps "Unique" [toCoq n]
+instance ToCoq PLC.DefaultFun where toCoq = show
+instance ToCoq PIR.Strictness where toCoq = show
+instance ToCoq PIR.Recursivity where toCoq = show
 
-instance Dumpable (PIR.Kind ann) where 
-  dump (PIR.Type _) = "Kind_Base"
-  dump (PIR.KindArrow _ k1 k2) = apps "Kind_Arrow" [dump k1, dump k2]
+instance ToCoq (PIR.Kind ann) where
+  toCoq (PIR.Type _) = "Kind_Base"
+  toCoq (PIR.KindArrow _ k1 k2) = apps "Kind_Arrow" [toCoq k1, toCoq k2]
 
-instance (Dumpable tyname, PLC.Closed uni, PLC.Everywhere uni Dumpable, forall a. Dumpable (uni a)) => Dumpable (PIR.Type tyname uni ann) where 
-  dump (PIR.TyVar _ tyname) = apps "Ty_Var" [dump tyname]
-  dump (PIR.TyFun _ ty1 ty2) = apps "Ty_Fun" [dump ty1, dump ty2]
-  dump (PIR.TyIFix _ ty1 ty2) = apps "Ty_IFix" [dump ty1, dump ty2]
-  dump (PIR.TyForall _ tyname k ty) = 
-    apps "Ty_Forall" [dump tyname, dump k, dump ty]
-  dump (PIR.TyBuiltin _ some) = apps "Ty_Builtin" [dump some]
-  dump (PIR.TyLam _ tyname k ty) = apps "Ty_Lam" [dump tyname, dump k , dump ty]
-  dump (PIR.TyApp _ ty1 ty2) = apps "Ty_App" [dump ty1, dump ty2]
+instance (ToCoq tyname, PLC.Closed uni, PLC.Everywhere uni ToCoq, forall a. ToCoq (uni a)) => ToCoq (PIR.Type tyname uni ann) where
+  toCoq (PIR.TyVar _ tyname) = apps "Ty_Var" [toCoq tyname]
+  toCoq (PIR.TyFun _ ty1 ty2) = apps "Ty_Fun" [toCoq ty1, toCoq ty2]
+  toCoq (PIR.TyIFix _ ty1 ty2) = apps "Ty_IFix" [toCoq ty1, toCoq ty2]
+  toCoq (PIR.TyForall _ tyname k ty) =
+    apps "Ty_Forall" [toCoq tyname, toCoq k, toCoq ty]
+  toCoq (PIR.TyBuiltin _ some) = apps "Ty_Builtin" [toCoq some]
+  toCoq (PIR.TyLam _ tyname k ty) = apps "Ty_Lam" [toCoq tyname, toCoq k , toCoq ty]
+  toCoq (PIR.TyApp _ ty1 ty2) = apps "Ty_App" [toCoq ty1, toCoq ty2]
 
 {-
-instance (forall a. Dumpable (f a)) => Dumpable (PLC.Some f) where
-  dump (PLC.Some x) = apps "Some" [dump x]
-instance (Dumpable (uni a), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PLC.ValueOf uni a) where
-  dump (PLC.ValueOf uni x) = PLC.bring (Proxy @Dumpable) uni $ apps "ValueOf" [dump uni, dump x] -- (PLC.ValueOf ev x) = apps "ValueOf" [dump ev, dump x]
+instance (forall a. ToCoq (f a)) => ToCoq (PLC.Some f) where
+  toCoq (PLC.Some x) = apps "Some" [toCoq x]
+instance (ToCoq (uni a), PLC.Closed uni, PLC.Everywhere uni ToCoq) => ToCoq (PLC.ValueOf uni a) where
+  toCoq (PLC.ValueOf uni x) = PLC.bring (Proxy @ToCoq) uni $ apps "ValueOf" [toCoq uni, toCoq x] -- (PLC.ValueOf ev x) = apps "ValueOf" [toCoq ev, toCoq x]
 -}
 
-instance (Dumpable (uni a), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PLC.TypeIn uni a) where
-  dump (PLC.TypeIn u) = apps "TypeIn" [dump u]
+instance (ToCoq (uni a), PLC.Closed uni, PLC.Everywhere uni ToCoq) => ToCoq (PLC.TypeIn uni a) where
+  toCoq (PLC.TypeIn u) = apps "TypeIn" [toCoq u]
 
-instance Dumpable PIR.Pass where
-  dump PIR.PassRename         = "PassRename"
-  dump PIR.PassTypeCheck      = "PassTypeCheck"
-  dump (PIR.PassInline names) = apps "PassInline" [dump names]
-  dump PIR.PassDeadCode       = "PassDeadCode"
-  dump PIR.PassThunkRec       = "PassThunkRec"
-  dump PIR.PassFloatTerm      = "PassFloatTerm"
-  dump PIR.PassLetNonStrict   = "PassLetNonStrict"
-  dump PIR.PassLetTypes       = "PassLetTypes"
-  dump PIR.PassLetRec         = "PassLetRec"
-  dump PIR.PassLetNonRec      = "PassLetNonRec"
+instance ToCoq PIR.Pass where
+  toCoq PIR.PassRename         = "PassRename"
+  toCoq PIR.PassTypeCheck      = "PassTypeCheck"
+  toCoq (PIR.PassInline names) = apps "PassInline" [toCoq names]
+  toCoq PIR.PassDeadCode       = "PassDeadCode"
+  toCoq PIR.PassThunkRec       = "PassThunkRec"
+  toCoq PIR.PassFloatTerm      = "PassFloatTerm"
+  toCoq PIR.PassLetNonStrict   = "PassLetNonStrict"
+  toCoq PIR.PassLetTypes       = "PassLetTypes"
+  toCoq PIR.PassLetRec         = "PassLetRec"
+  toCoq PIR.PassLetNonRec      = "PassLetNonRec"
 
 
 instance
-  ( PLC.Everywhere uni Dumpable
+  ( PLC.Everywhere uni ToCoq
   , PLC.Closed uni
-  , Dumpable fun
-  , forall b. Dumpable (uni b)
+  , ToCoq fun
+  , forall b. ToCoq (uni b)
   )
-  => Dumpable (PIR.CompilationTrace uni fun a) where
-  dump (PIR.CompilationTrace t0 passes) = apps "CompilationTrace" [dump t0, dump passes]
+  => ToCoq (PIR.CompilationTrace uni fun a) where
+  toCoq (PIR.CompilationTrace t0 passes) = apps "CompilationTrace" [toCoq t0, toCoq passes]
 
+dumpTracePretty :: PIR.CompilationTrace _ _ _ -> String
+dumpTracePretty (PIR.CompilationTrace t0 passes) = unlines . List.map (PP.pretty) (t0 : concat [[show pass, PP.pretty res]| (pass, res) <- passes])
 
 -- | Get the 'GHC.Name' corresponding to the given 'TH.Name', or throw an error if we can't get it.
 thNameToGhcNameOrFail :: TH.Name -> PluginM uni fun GHC.Name
