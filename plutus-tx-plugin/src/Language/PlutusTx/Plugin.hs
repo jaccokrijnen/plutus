@@ -423,7 +423,7 @@ instance (Dumpable tyname, Dumpable name, Dumpable fun, PLC.Closed uni, PLC.Ever
   dump (PIR.TermBind _ strictness vdecl t) = apps "TermBind"     [dump strictness, dump vdecl, dump t]
   dump (PIR.TypeBind _ tvdecl ty)          = apps "TypeBind"     [dump tvdecl, dump ty]
   dump (PIR.DatatypeBind _ dt)             = apps "DatatypeBind" [dump dt]
-instance (Dumpable name) => Dumpable (PIR.VarDecl tyname name uni fun a) where
+instance (Dumpable name, Dumpable tyname, PLC.Closed uni, PLC.Everywhere uni Dumpable, forall b. Dumpable (uni b)) => Dumpable (PIR.VarDecl tyname name uni fun a) where
   dump (PIR.VarDecl _ name ty) = apps "VarDecl" [dump name, dump ty]
 instance (Dumpable tyname) => Dumpable (PIR.TyVarDecl tyname a) where
   dump (PIR.TyVarDecl _ name kind) = apps "TyVarDecl" [dump name, dump kind]
@@ -432,14 +432,14 @@ instance (Dumpable tyname) => Dumpable (PIR.TyVarDecl tyname a) where
 -- (need this to verify Scott encoding)
 newtype Constructor tyname name uni fun a = Constructor (PIR.VarDecl tyname name uni fun a)
 
-instance (Dumpable name) => Dumpable (Constructor tyname name uni fun a) where
-  dump (Constructor (PIR.VarDecl _ name ty)) = apps "Constructor" [dump name, dump (arity ty)]
+instance (Dumpable tyname, Dumpable name, PLC.Everywhere uni Dumpable, PLC.Closed uni, forall b. Dumpable (uni b)) => Dumpable (Constructor tyname name uni fun a) where
+  dump (Constructor vd@(PIR.VarDecl _ name ty)) = apps "Constructor" [dump vd, dump (arity ty)]
     where
       arity :: PIR.Type tyname uni a -> Int
       arity (PIR.TyFun _ _a b) = 1 + arity b
       arity _                  = 0
 
-instance (Dumpable name, Dumpable tyname) => Dumpable (PIR.Datatype tyname name uni fun a) where
+instance (Dumpable name, Dumpable tyname, forall b. Dumpable (uni b), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PIR.Datatype tyname name uni fun a) where
   dump (PIR.Datatype _ tvdecl tvdecls name constructors) = apps "Datatype" [dump tvdecl, dump tvdecls, dump name, dump (List.map Constructor constructors)]
 instance Dumpable (PLC.TyName) where dump (PLC.TyName name) = apps "TyName" [dump name]
 
@@ -459,8 +459,29 @@ instance Dumpable PLC.DefaultFun where dump = show
 instance Dumpable PIR.Strictness where dump = show
 instance Dumpable PIR.Recursivity where dump = show
 
-instance Dumpable (PIR.Kind a) where dump _ = "tt"
-instance Dumpable (PIR.Type a b c) where dump _ = "tt"
+instance Dumpable (PIR.Kind ann) where 
+  dump (PIR.Type _) = "Kind_Base"
+  dump (PIR.KindArrow _ k1 k2) = apps "Kind_Arrow" [dump k1, dump k2]
+
+instance (Dumpable tyname, PLC.Closed uni, PLC.Everywhere uni Dumpable, forall a. Dumpable (uni a)) => Dumpable (PIR.Type tyname uni ann) where 
+  dump (PIR.TyVar _ tyname) = apps "Ty_Var" [dump tyname]
+  dump (PIR.TyFun _ ty1 ty2) = apps "Ty_Fun" [dump ty1, dump ty2]
+  dump (PIR.TyIFix _ ty1 ty2) = apps "Ty_IFix" [dump ty1, dump ty2]
+  dump (PIR.TyForall _ tyname k ty) = 
+    apps "Ty_Forall" [dump tyname, dump k, dump ty]
+  dump (PIR.TyBuiltin _ some) = apps "Ty_Builtin" [dump some]
+  dump (PIR.TyLam _ tyname k ty) = apps "Ty_Lam" [dump tyname, dump k , dump ty]
+  dump (PIR.TyApp _ ty1 ty2) = apps "Ty_App" [dump ty1, dump ty2]
+
+{-
+instance (forall a. Dumpable (f a)) => Dumpable (PLC.Some f) where
+  dump (PLC.Some x) = apps "Some" [dump x]
+instance (Dumpable (uni a), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PLC.ValueOf uni a) where
+  dump (PLC.ValueOf uni x) = PLC.bring (Proxy @Dumpable) uni $ apps "ValueOf" [dump uni, dump x] -- (PLC.ValueOf ev x) = apps "ValueOf" [dump ev, dump x]
+-}
+
+instance (Dumpable (uni a), PLC.Closed uni, PLC.Everywhere uni Dumpable) => Dumpable (PLC.TypeIn uni a) where
+  dump (PLC.TypeIn u) = apps "TypeIn" [dump u]
 
 instance Dumpable PIR.Pass where
   dump PIR.PassRename         = "PassRename"
