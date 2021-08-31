@@ -342,8 +342,12 @@ runCompiler opts expr = do
     -- (Simplified) Pir -> Plc translation.
     (plcT, passes') <- flip runReaderT pirCtx $ PIR.compileReadableToPlc' spirT
 
-    when (poDumpPir opts) $
-      liftIO . writeFile "compilation-trace" . toCoq $ PIR.CompilationTrace t_0 (passes ++ passes')
+    let writeTrace toString file =
+          liftIO . writeFile file . toString $ PIR.CompilationTrace t_0 (passes ++ passes')
+
+    when (poDumpPir opts) $ do
+      writeTrace toCoq "compilation-trace"
+      writeTrace dumpTracePretty "compilation-trace-readable"
 
     let plcP = PLC.Program () (PLC.defaultVersion ()) $ void plcT
     -- when (poDumpPlc opts) $ dumpPLC "PLC (Program)" plcP
@@ -505,8 +509,11 @@ instance
   => ToCoq (PIR.CompilationTrace uni fun a) where
   toCoq (PIR.CompilationTrace t0 passes) = apps "CompilationTrace" [toCoq t0, toCoq passes]
 
-dumpTracePretty :: PIR.CompilationTrace _ _ _ -> String
-dumpTracePretty (PIR.CompilationTrace t0 passes) = unlines . List.map (PP.pretty) (t0 : concat [[show pass, PP.pretty res]| (pass, res) <- passes])
+dumpTracePretty :: PIR.CompilationTrace PLC.DefaultUni PLC.DefaultFun () -> String
+dumpTracePretty (PIR.CompilationTrace t0 passes) = unlines . List.intersperse "" $ strs
+  where
+    strs = pp t0 : concat [ [show pass, pp res] | (pass, res) <- passes]
+    pp = show . PP.pretty
 
 -- | Get the 'GHC.Name' corresponding to the given 'TH.Name', or throw an error if we can't get it.
 thNameToGhcNameOrFail :: TH.Name -> PluginM uni fun GHC.Name
