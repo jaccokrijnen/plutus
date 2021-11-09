@@ -66,6 +66,7 @@ data PluginOptions = PluginOptions {
     , poContextLevel :: Int
     , poDumpPir      :: Bool
     , poDumpPlc      :: Bool
+    , poDumpTrace    :: Bool
     , poOptimize     :: Bool
     }
 
@@ -133,6 +134,7 @@ parsePluginArgs args = do
             , poContextLevel = if elem "no-context" args then 0 else if elem "debug-context" args then 3 else 1
             , poDumpPir = elem "dump-pir" args
             , poDumpPlc = elem "dump-plc" args
+            , poDumpTrace = elem "dump-trace" args
             , poOptimize = notElem "dont-optimize" args
             }
     -- TODO: better parsing with failures
@@ -327,8 +329,8 @@ runCompiler opts expr = do
                  & set PIR.ccTypeCheckConfig pirTcConfig
 
     let phase name = "\n" ++ replicate 20 '=' ++ " " ++ name ++ replicate 20 '=' ++ "\n"
-    -- let dumpPLC name ast = liftIO . putStrLn $ phase name ++ (show (PP.pretty ast))
-    -- let dumpPIR name ast = liftIO . putStrLn $ phase name ++ (show ast)
+    let dumpPLC name ast = liftIO . putStrLn $ phase name ++ (show (PP.pretty ast))
+    let dumpPIR name ast = liftIO . putStrLn $ phase name ++ (show ast)
     let dumpPIR' name ast = liftIO . putStrLn $ phase name ++ toCoq ast
 
     -- GHC.Core -> Pir translation.
@@ -345,12 +347,12 @@ runCompiler opts expr = do
     let writeTrace toString file =
           liftIO . writeFile file . toString $ PIR.CompilationTrace t_0 (passes ++ passes')
 
-    when (poDumpPir opts) $ do
+    when (poDumpTrace opts) $ do
       writeTrace toCoq "compilation-trace"
       writeTrace dumpTracePretty "compilation-trace-readable"
 
     let plcP = PLC.Program () (PLC.defaultVersion ()) $ void plcT
-    -- when (poDumpPlc opts) $ dumpPLC "PLC (Program)" plcP
+    when (poDumpPlc opts) $ dumpPLC "PLC (Program)" plcP
 
     -- We do this after dumping the programs so that if we fail typechecking we still get the dump.
     when (poDoTypecheck opts) . void $
