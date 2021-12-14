@@ -60,6 +60,8 @@ import qualified FamInstEnv                             as GHC
 
 import           System.IO.Unsafe                       (unsafePerformIO)
 
+import           Data.Char  as Char
+
 data PluginOptions = PluginOptions {
     poDoTypecheck    :: Bool
     , poDeferErrors  :: Bool
@@ -348,7 +350,7 @@ runCompiler opts expr = do
           liftIO . writeFile file . toString $ PIR.CompilationTrace t_0 (passes ++ passes')
 
     when (poDumpTrace opts) $ do
-      writeTrace toCoq "compilation-trace"
+      writeTrace toTex "compilation-trace"
       writeTrace dumpTracePretty "compilation-trace-readable"
 
     let plcP = PLC.Program () (PLC.defaultVersion ()) $ void plcT
@@ -374,7 +376,18 @@ class ToCoq a where
 
 apps :: String -> [String] -> String
 apps f xs = List.intercalate " " (f : fmap parens xs)
-  where parens x = "(" ++ x ++ ")"
+
+parens :: String -> String
+parens x = "(" ++ x ++ ")"
+
+toTexParens :: ToTex a => a -> String
+toTexParens x
+  | isAtom x  = toTex x
+  | otherwise = parens (toTex x)
+
+
+lower :: String -> String
+lower = List.map Char.toLower
 
 -- TODO: Write these instances with generics
 instance
@@ -574,3 +587,187 @@ makePrimitiveNameInfo names = do
         thing <- lift . lift $ GHC.lookupThing ghcName
         pure (name, thing)
     pure $ Map.fromList infos
+
+
+
+-- VERY hacky pretty printing for FLOPS paper
+class ToTex a where
+  toTex :: a -> String
+
+  -- for saving parentheses
+  isAtom :: a -> Bool
+  isAtom _ = False
+
+
+-- TODO: Write these instances with generics
+instance
+  ( ToTex name
+  , ToTex tyname
+  , ToTex fun
+  , forall b. ToTex (uni b)
+  , PLC.Closed uni
+  , PLC.Everywhere uni ToTex
+  ) =>
+  ToTex (PIR.Term name tyname uni fun a) where
+  toTex = \case
+    PIR.Let _ rec bindings t  -> List.intercalate "\n"
+      [ unwords ["let", toTex rec, toTex bindings, "in"]
+      , toTex t]
+    PIR.Var _ name            -> toTex name
+    PIR.TyAbs _ tyname kind t -> List.concat ["Λ", toTex tyname, " : ", toTex kind, ".", "\n", toTex t]
+    PIR.LamAbs _ name ty t    -> List.concat ["λ", toTex name, " : ", toTex ty, " .", "\n", toTex t]
+    PIR.Apply _ t1 t2         -> List.concat [toTexParens t1, " " , toTexParens t2]
+    PIR.Constant _ val        -> toTex val
+    PIR.Builtin _ fun         -> toTex fun
+    PIR.TyInst _ term ty      -> unwords [toTex term, "{", toTex ty, "}"]
+    PIR.Error _ ty            -> apps "Error" [toTex ty]
+    PIR.IWrap _ ty1 ty2 t     -> apps "IWrap" [toTex ty1, toTex ty2, toTex t]
+    PIR.Unwrap _ t            -> apps "Unwrap" [toTex t]
+
+  isAtom (PIR.Var _ _) = True
+  isAtom (PIR.Constant _ _) = True
+  isAtom (PIR.Builtin _ _) = True
+  isAtom (PIR.Error _ _) = True
+  isAtom _ = False
+
+instance (forall a. ToTex (f a)) => ToTex (PLC.Some f) where
+  toTex (PLC.Some x) = toTex x
+
+instance (ToTex (uni a), PLC.Closed uni, PLC.Everywhere uni ToTex) => ToTex (PLC.ValueOf uni a) where
+  toTex (PLC.ValueOf uni x) = PLC.bring (Proxy @ToTex) uni $
+    toTex x -- (PLC.ValueOf ev x) = apps "ValueOf" [toTex ev, toTex x]
+
+instance ToTex (PLC.DefaultUni a) where
+  toTex PLC.DefaultUniInteger    = "Integer"
+  toTex PLC.DefaultUniByteString = "ByteString"
+  toTex PLC.DefaultUniString     = "String"
+  toTex PLC.DefaultUniChar       = "Char"
+  toTex PLC.DefaultUniUnit       = "Unit"
+  toTex PLC.DefaultUniBool       = "Bool"
+
+instance ToTex Bool where
+  toTex True  = "true"
+  toTex False = "false"
+
+instance ToTex () where toTex () = "tt"
+instance ToTex T.Text where toTex = show
+instance ToTex String where toTex = show
+instance ToTex Int where toTex = show
+instance ToTex Integer where toTex = show
+instance ToTex Char where toTex = show
+instance ToTex BS.ByteString where toTex = show
+
+instance (ToTex tyname, ToTex name, ToTex fun, PLC.Closed uni, PLC.Everywhere uni ToTex, forall b. ToTex (uni b)) =>
+  ToTex (PIR.Binding tyname name uni fun a) where
+  toTex (PIR.TermBind _ strictness vdecl t) = unwords [toTex strictness, toTex vdecl, "=", if List.isPrefixOf "floatme" (toTex vdecl) then toTex t else "..."] -- toTex t]
+  toTex (PIR.TypeBind _ tvdecl ty)          = unwords ["type", toTex tvdecl, "=", "..."] -- toTex ty]
+  toTex (PIR.DatatypeBind _ dt)             = unwords [toTex dt]
+instance (ToTex name, ToTex tyname, PLC.Closed uni, PLC.Everywhere uni ToTex, forall b. ToTex (uni b)) => ToTex (PIR.VarDecl tyname name uni fun a) where
+  toTex (PIR.VarDecl _ name ty) = unwords [toTex name]  --, ":", toTex ty]
+instance (ToTex tyname) => ToTex (PIR.TyVarDecl tyname a) where
+  toTex (PIR.TyVarDecl _ name kind) = toTex name -- apps "TyVarDecl" [toTex name, toTex kind]
+
+
+instance (ToTex tyname, ToTex name, PLC.Everywhere uni ToTex, PLC.Closed uni, forall b. ToTex (uni b)) => ToTex (Constructor tyname name uni fun a) where
+  toTex (Constructor vd@(PIR.VarDecl _ name ty)) = unwords [toTex vd, ":", "..."]
+    where
+      arity :: PIR.Type tyname uni a -> Int
+      arity (PIR.TyFun _ _a b) = 1 + arity b
+      arity _                  = 0
+
+instance (ToTex name, ToTex tyname, forall b. ToTex (uni b), PLC.Closed uni, PLC.Everywhere uni ToTex) => ToTex (PIR.Datatype tyname name uni fun a) where
+  toTex (PIR.Datatype _ tvdecl tvdecls name constructors) =
+    let pp_tyvars = unwords (List.map toTex tvdecls)
+    in unwords ["data", toTex tvdecl, pp_tyvars, "=",
+        List.intercalate " | " (List.map (toTex . Constructor) constructors),"with", toTex name]
+instance ToTex (PLC.TyName) where toTex (PLC.TyName name) = toTex name
+
+
+instance ToTex a => ToTex (NonEmpty.NonEmpty a) where
+  toTex (x NonEmpty.:| []) = toTex x
+  toTex (x NonEmpty.:| xs) = List.intercalate ";\n    " (List.map toTex (x:xs))
+
+instance {-# OVERLAPPABLE #-} ToTex a => ToTex [a] where
+  toTex []     = "nil"
+  toTex (x:xs) = apps "cons" [toTex x, toTex xs]
+instance (ToTex a, ToTex b) => ToTex (a, b) where
+  toTex (a, b) = "(" ++ toTex a ++ "," ++ toTex b ++ ")"
+
+instance ToTex PLC.Name where toTex (PLC.Name str uniq) = List.concat [T.unpack str, toTex uniq]
+instance ToTex PLC.Unique where toTex (PLC.Unique n) = List.concat ["@$_{", toTex n, "}$@"]
+instance ToTex PLC.DefaultFun where
+  toTex = lowerCaseHead . show
+    where
+      lowerCaseHead "" = ""
+      lowerCaseHead (x:xs) = Char.toLower x : xs
+
+instance ToTex PIR.Strictness where toTex = lower . show
+instance ToTex PIR.Recursivity where toTex = lower . show
+
+instance ToTex (PIR.Kind ann) where
+  toTex (PIR.Type _) = "*"
+  toTex (PIR.KindArrow _ k1 k2) = unwords [toTexParens k1, "->", toTexParens k2]
+
+  isAtom (PIR.Type _) = True
+  isAtom _   = False
+
+instance (ToTex tyname, PLC.Closed uni, PLC.Everywhere uni ToTex, forall a. ToTex (uni a)) => ToTex (PIR.Type tyname uni ann) where
+  -- toTex t = "..."
+  toTex (PIR.TyVar _ tyname) = toTex tyname
+  toTex (PIR.TyFun _ ty1 ty2) = unwords [toTexParens ty1, "->", toTexParens ty2]
+  toTex (PIR.TyIFix _ ty1 ty2) = apps "Ty_IFix" [toTex ty1, toTex ty2]
+  toTex (PIR.TyForall _ tyname k ty) =
+    List.concat ["∀", toTex tyname, " : ", toTex k, ".", toTex ty]
+  toTex (PIR.TyBuiltin _ some) = toTex some
+  toTex (PIR.TyLam _ tyname k ty) = unwords ["λ", toTex tyname, toTex k , toTex ty]
+  toTex (PIR.TyApp _ ty1 ty2) = unwords [toTexParens ty1, toTexParens ty2]
+
+  isAtom (PIR.TyVar _ _ ) = True
+  isAtom (PIR.TyBuiltin _ _) = True
+  isAtom _ = False
+
+{-
+instance (forall a. ToTex (f a)) => ToTex (PLC.Some f) where
+  toTex (PLC.Some x) = apps "Some" [toTex x]
+instance (ToTex (uni a), PLC.Closed uni, PLC.Everywhere uni ToTex) => ToTex (PLC.ValueOf uni a) where
+  toTex (PLC.ValueOf uni x) = PLC.bring (Proxy @ToTex) uni $ apps "ValueOf" [toTex uni, toTex x] -- (PLC.ValueOf ev x) = apps "ValueOf" [toTex ev, toTex x]
+-}
+
+instance (ToTex (uni a), PLC.Closed uni, PLC.Everywhere uni ToTex) => ToTex (PLC.TypeIn uni a) where
+  toTex (PLC.TypeIn u) = toTex u
+
+subsec :: String -> String
+subsec x = "\\subsection{" ++ x ++ "}"
+beginhs, endhs :: String
+beginhs = "\\begin{appendixcode}"
+endhs = "\\end{appendixcode}"
+
+instance ToTex PIR.Pass where
+  toTex pass = case pass of
+    PIR.PassRename         ->  "PassRename"
+    PIR.PassTypeCheck      ->  "PassTypeCheck"
+    (PIR.PassInline names) ->  apps "PassInline" [toTex names]
+    PIR.PassDeadCode       ->  "PassDeadCode"
+    PIR.PassThunkRec       ->  "PassThunkRec"
+    PIR.PassFloatTerm      ->  "PassFloatTerm"
+    PIR.PassLetNonStrict   ->  "PassLetNonStrict"
+    PIR.PassLetTypes       ->  "PassLetTypes"
+    PIR.PassLetRec         ->  "PassLetRec"
+    PIR.PassLetNonRec      ->  "PassLetNonRec"
+
+
+instance
+  ( PLC.Everywhere uni ToTex
+  , PLC.Closed uni
+  , ToTex fun
+  , forall b. ToTex (uni b)
+  )
+  => ToTex (PIR.CompilationTrace uni fun a) where
+  toTex (PIR.CompilationTrace t0 passes) = List.intercalate "\n" (
+    [sec "Original PIR Term" (toTex t0)]
+      ++ [sec (toTex p) (toTex res) | (p, res) <- passes]
+    )
+
+    where sec name code = List.intercalate "\n" [subsec name, "", beginhs, code, endhs, ""]
+
+
