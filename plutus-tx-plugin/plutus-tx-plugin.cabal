@@ -42,6 +42,8 @@ library
         Language.PlutusTx.Plugin
         Language.PlutusTx.Compiler.Error
     other-modules:
+        Extracted
+        Glue
         Language.PlutusTx.Compiler.Binders
         Language.PlutusTx.Compiler.Builtins
         Language.PlutusTx.Compiler.Expr
