@@ -54,9 +54,10 @@ simplifyTerm = runIfOpts $ pure . fst . Inline.inline . DeadCode.removeDeadBindi
 
 simplifyTerm' :: Compiling m e uni fun a => PIRTerm uni fun b -> m (PIRTerm uni fun b, [PassRes uni fun b])
 simplifyTerm' t = runIfOpts (\(t',_) ->  -- ugly workaround to get types of runIfOpts to line up
-  let t1 = DeadCode.removeDeadBindings t'
+  let (t1, t0) = DeadCode.removeDeadBindingsDump t'
       (t2, eliminated) = Inline.inline t1
-      ctrace = [ (PassDeadCode          , t1)
+      ctrace = [ (PassRename            , t0)
+               , (PassDeadCode          , t1)
                , (PassInline eliminated , t2)
                ]
   in pure (t2, ctrace)) (t, [])

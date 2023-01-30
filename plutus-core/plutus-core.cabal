@@ -118,6 +118,8 @@ library
         Language.PlutusIR.Transform.LetFloat
         Language.PlutusIR.Transform.Inline
         Language.PlutusIR.TypeCheck
+        Language.PlutusIR.Certifier.Extracted
+        Language.PlutusIR.Certifier.Glue
 
         Language.UntypedPlutusCore
         Language.UntypedPlutusCore.DeBruijn

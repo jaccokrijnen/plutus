@@ -3,7 +3,7 @@
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE TypeOperators    #-}
 -- | Optimization passes for removing dead code, mainly dead let bindings.
-module Language.PlutusIR.Optimizer.DeadCode (removeDeadBindings) where
+module Language.PlutusIR.Optimizer.DeadCode (removeDeadBindings, removeDeadBindingsDump) where
 
 import           Language.PlutusIR
 import qualified Language.PlutusIR.Analysis.Dependencies as Deps
@@ -31,9 +31,18 @@ removeDeadBindings
        PLC.ToBuiltinMeaning uni fun)
     => Term tyname name uni fun a
     -> Term tyname name uni fun a
-removeDeadBindings t =
+removeDeadBindings = fst . removeDeadBindingsDump
+
+-- | Remove all the dead let bindings in a term.
+removeDeadBindingsDump
+    :: (PLC.HasUnique name PLC.TermUnique, PLC.HasUnique tyname PLC.TypeUnique,
+       PLC.ToBuiltinMeaning uni fun)
+    => Term tyname name uni fun a
+    -> (Term tyname name uni fun a, Term tyname name uni fun a)
+removeDeadBindingsDump t =
     let tRen = PLC.runQuote $ PLC.rename t
-    in runReader (transformMOf termSubterms processTerm tRen) (calculateLiveness tRen)
+        tEliminated = runReader (transformMOf termSubterms processTerm tRen) (calculateLiveness tRen)
+    in (tEliminated, tRen)
 
 type Liveness = Set.Set Deps.Node
 

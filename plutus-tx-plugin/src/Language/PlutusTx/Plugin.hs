@@ -35,6 +35,7 @@ import           Language.PlutusCore.Quote
 import qualified Language.UntypedPlutusCore             as UPLC
 
 import qualified Language.PlutusIR                      as PIR
+import qualified Language.PlutusIR.Certifier.Glue       as Certifier
 import qualified Language.PlutusIR.Compiler             as PIR
 import qualified Language.PlutusIR.Compiler.Definitions as PIR
 
@@ -60,7 +61,7 @@ import qualified FamInstEnv                             as GHC
 
 import           System.IO.Unsafe                       (unsafePerformIO)
 
-import           Data.Char  as Char
+import           Data.Char                              as Char
 
 data PluginOptions = PluginOptions {
     poDoTypecheck    :: Bool
@@ -345,13 +346,18 @@ runCompiler opts expr = do
 
     -- (Simplified) Pir -> Plc translation.
     (plcT, passes') <- flip runReaderT pirCtx $ PIR.compileReadableToPlc' spirT
+    let trace = PIR.CompilationTrace t_0 (passes ++ passes')
 
     let writeTrace toString file =
-          liftIO . writeFile file . toString $ PIR.CompilationTrace t_0 (passes ++ passes')
+          liftIO . writeFile file . toString $ trace
+
+    let writeCertifier file = liftIO . writeFile file . show $ certify trace
 
     when (poDumpTrace opts) $ do
-      writeTrace toTex "compilation-trace"
+      writeTrace toTex "compilation-trace-tex"
+      writeTrace toCoq "compilation-trace"
       writeTrace dumpTracePretty "compilation-trace-readable"
+      writeCertifier "certifier-results"
 
     let plcP = PLC.Program () (PLC.defaultVersion ()) $ void plcT
     when (poDumpPlc opts) $ dumpPLC "PLC (Program)" plcP
@@ -479,7 +485,7 @@ instance ToCoq PIR.Strictness where toCoq = show
 instance ToCoq PIR.Recursivity where toCoq = show
 
 instance ToCoq (PIR.Kind ann) where
-  toCoq (PIR.Type _) = "Kind_Base"
+  toCoq (PIR.Type _)            = "Kind_Base"
   toCoq (PIR.KindArrow _ k1 k2) = apps "Kind_Arrow" [toCoq k1, toCoq k2]
 
 instance (ToCoq tyname, PLC.Closed uni, PLC.Everywhere uni ToCoq, forall a. ToCoq (uni a)) => ToCoq (PIR.Type tyname uni ann) where
@@ -624,11 +630,11 @@ instance
     PIR.IWrap _ ty1 ty2 t     -> apps "IWrap" [toTex ty1, toTex ty2, toTex t]
     PIR.Unwrap _ t            -> apps "Unwrap" [toTex t]
 
-  isAtom (PIR.Var _ _) = True
+  isAtom (PIR.Var _ _)      = True
   isAtom (PIR.Constant _ _) = True
-  isAtom (PIR.Builtin _ _) = True
-  isAtom (PIR.Error _ _) = True
-  isAtom _ = False
+  isAtom (PIR.Builtin _ _)  = True
+  isAtom (PIR.Error _ _)    = True
+  isAtom _                  = False
 
 instance (forall a. ToTex (f a)) => ToTex (PLC.Some f) where
   toTex (PLC.Some x) = toTex x
@@ -698,18 +704,18 @@ instance ToTex PLC.Unique where toTex (PLC.Unique n) = List.concat ["@$_{", toTe
 instance ToTex PLC.DefaultFun where
   toTex = lowerCaseHead . show
     where
-      lowerCaseHead "" = ""
+      lowerCaseHead ""     = ""
       lowerCaseHead (x:xs) = Char.toLower x : xs
 
 instance ToTex PIR.Strictness where toTex = lower . show
 instance ToTex PIR.Recursivity where toTex = lower . show
 
 instance ToTex (PIR.Kind ann) where
-  toTex (PIR.Type _) = "*"
+  toTex (PIR.Type _)            = "*"
   toTex (PIR.KindArrow _ k1 k2) = unwords [toTexParens k1, "->", toTexParens k2]
 
   isAtom (PIR.Type _) = True
-  isAtom _   = False
+  isAtom _            = False
 
 instance (ToTex tyname, PLC.Closed uni, PLC.Everywhere uni ToTex, forall a. ToTex (uni a)) => ToTex (PIR.Type tyname uni ann) where
   -- toTex t = "..."
@@ -722,9 +728,9 @@ instance (ToTex tyname, PLC.Closed uni, PLC.Everywhere uni ToTex, forall a. ToTe
   toTex (PIR.TyLam _ tyname k ty) = unwords ["λ", toTex tyname, toTex k , toTex ty]
   toTex (PIR.TyApp _ ty1 ty2) = unwords [toTexParens ty1, toTexParens ty2]
 
-  isAtom (PIR.TyVar _ _ ) = True
+  isAtom (PIR.TyVar _ _ )    = True
   isAtom (PIR.TyBuiltin _ _) = True
-  isAtom _ = False
+  isAtom _                   = False
 
 {-
 instance (forall a. ToTex (f a)) => ToTex (PLC.Some f) where
@@ -770,4 +776,14 @@ instance
 
     where sec name code = List.intercalate "\n" [subsec name, "", beginhs, code, endhs, ""]
 
-
+-- Loop through all pre-post terms of dead code elimination
+-- Currently done as a post-processing step, because PlutusIR.Compiler works on
+-- a representation that is polymorphic in uni and func parameters. Certifier
+-- needs them instantiated to DefaultUni and DefaultFun.
+certify :: PIR.CompilationTrace PLC.DefaultUni PLC.DefaultFun a -> [(PIR.Pass, Bool)]
+certify (PIR.CompilationTrace start ps) = certify' start ps
+  where
+    certify' _    []                 = []
+    certify' pre ((pass, post) : ps) = case pass of
+        PIR.PassDeadCode -> [(PIR.PassDeadCode, Certifier.is_dead_code pre post)] ++ certify' post ps
+        _                -> certify' post ps
