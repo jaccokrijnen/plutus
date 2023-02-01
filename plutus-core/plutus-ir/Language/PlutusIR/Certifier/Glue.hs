@@ -1,5 +1,11 @@
-{-# LANGUAGE GADTs      #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE IncoherentInstances  #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE OverlappingInstances #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Language.PlutusIR.Certifier.Glue where
 
 import qualified Language.PlutusCore                   as P (DefaultFun (..), DefaultUni (..), Some (..), TypeIn (..),
@@ -7,6 +13,7 @@ import qualified Language.PlutusCore                   as P (DefaultFun (..), De
 import qualified Language.PlutusIR                     as P
 import qualified Language.PlutusIR.Certifier.Extracted as E
 
+import           Data.Bits
 import           Data.Char
 import           Data.List.NonEmpty
 import           Data.Text
@@ -36,7 +43,7 @@ type ETyVarDecl = E.Tvdecl EString
 type EConstr = E.Constr EString EString EString
 
 glueString :: String -> EString
-glueString = Prelude.foldr (E.String0 . charToAscii) E.EmptyString
+glueString = Prelude.foldr (E.String0 . glueChar) E.EmptyString
 
 intToNat :: Int -> E.Nat
 intToNat 0 = E.O
@@ -44,8 +51,8 @@ intToNat n
   | n < 0 = error "intToNat: negative Int"
   | otherwise = E.S (intToNat (n - 1))
 
-charToAscii :: Char -> E.Ascii0
-charToAscii = E.ascii_of_nat . intToNat . ord
+glueChar :: Char -> E.Ascii0
+glueChar = E.ascii_of_nat . intToNat . ord
 
 glueNonEmpty :: NonEmpty a -> E.List a
 glueNonEmpty (x :| xs) = E.Cons x (glueList xs)
@@ -103,7 +110,45 @@ glueDefaultFun = \case
   P.Trace                -> E.Trace
 
 glueConstant :: P.Some (P.ValueOf P.DefaultUni) -> E.Some0 E.ValueOf
-glueConstant (P.Some (P.ValueOf u x)) = E.Some (glueDefaultUni u) (E.unsafeCoerce x)
+glueConstant (P.Some (P.ValueOf u x)) =
+  let any = case u of
+        P.DefaultUniInteger    -> E.unsafeCoerce (glueInteger x)
+        P.DefaultUniChar       -> E.unsafeCoerce (glueChar x)
+        P.DefaultUniUnit       -> E.unsafeCoerce x -- same rep ()
+        P.DefaultUniBool       -> E.unsafeCoerce (glueBool x)
+        P.DefaultUniString     -> E.unsafeCoerce (glueString x)
+        P.DefaultUniByteString -> E.unsafeCoerce (glueString (show x))
+  in E.Some (glueDefaultUni u) (E.unsafeCoerce any)
+
+glueInteger :: Integer -> E.Z
+glueInteger x
+  | x == 0 = E.Z0
+  | x > 0  = E.Zpos (gluePositive x)
+  | x < 0  = E.Zneg (gluePositive (-1 * x))
+
+
+
+-- Coq's representation of Positive: https://coq.inria.fr/library/Coq.Numbers.BinNums.html
+gluePositive :: Integer -> E.Positive
+gluePositive n
+  | n <= 0    = error "gluePositive: non-positive number provided"
+  | otherwise = bitsToPos (go n)
+  where
+    go 0 = []
+    go n = case divMod n 2 of
+      (r, 0) -> False : go r
+      (r, 1) -> True : go r
+
+    bitsToPos :: [Bool] -> E.Positive
+    bitsToPos []           = error "bitsToPos: positive number should have a most significant (leading) 1 bit"
+    bitsToPos (True : [])  = E.XH
+    bitsToPos (True : xs)  = E.XI (bitsToPos xs)
+    bitsToPos (False : xs) = E.XO (bitsToPos xs)
+
+
+glueBool :: Bool -> E.Bool
+glueBool True  = E.True
+glueBool False = E.False
 
 glueStrictness :: P.Strictness -> E.Strictness
 glueStrictness P.Strict    = E.Strict
@@ -169,9 +214,52 @@ glueKind (P.KindArrow _ k1 k2) = E.Kind_Arrow (glueKind k1) (glueKind k2)
 
 -----------------------
 
-glueBool :: E.Bool -> Bool
-glueBool E.True  = True
-glueBool E.False = False
+toBool :: E.Bool -> Bool
+toBool E.True  = True
+toBool E.False = False
 
 is_dead_code :: Term a -> Term a -> Bool
-is_dead_code t1 t2 = glueBool $ E.dec_Term (glueTerm t1) (glueTerm t2)
+is_dead_code t1 t2 = toBool $ E.dec_Term (glueTerm t1) (glueTerm t2)
+
+is_eq :: Term a -> Term a -> Bool
+is_eq t1 t2 = toBool $ E.term_eqb (glueTerm t1) (glueTerm t2)
+
+----------------------------
+-- Show instances for debugging conversion glue
+--
+
+deriving instance Show E.Unit
+deriving instance Show E.Bool
+deriving instance Show E.Nat
+deriving instance (Show a, Show b) => Show (E.Prod a b)
+deriving instance Show a => Show (E.List a)
+deriving instance Show E.Sumbool
+deriving instance Show E.Positive
+deriving instance Show E.Z
+deriving instance Show E.Ascii0
+deriving instance Show E.Recursivity
+deriving instance Show E.Strictness
+deriving instance Show E.DefaultUni
+instance Show (E.Some0 a) where
+  show x = "Some _"
+-- instance Show (E.Some0 a) where
+--   show (E.Some ty x) = case ty of {
+--    E.DefaultUniInteger -> show @E.Z (E.unsafeCoerce x);
+--    E.DefaultUniChar    -> show @E.Ascii0 (E.unsafeCoerce x);
+--    E.DefaultUniUnit    -> show @E.Unit (E.unsafeCoerce x);
+--    E.DefaultUniBool    -> show @E.Bool (E.unsafeCoerce x);
+--    _                 -> show @E.String(E.unsafeCoerce x)}
+deriving instance Show (E.Some0 ())
+deriving instance Show E.DefaultFun
+deriving instance Show E.Kind
+deriving instance Show E.Binder_info
+deriving instance Show E.N
+
+deriving instance Show EType
+deriving instance Show EVarDecl
+deriving instance Show ETyVarDecl
+deriving instance Show EConstr
+deriving instance Show EDatatype
+deriving instance Show ETerm
+deriving instance Show EBinding
+deriving instance Show EString

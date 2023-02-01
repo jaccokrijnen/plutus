@@ -70,6 +70,7 @@ data PluginOptions = PluginOptions {
     , poDumpPir      :: Bool
     , poDumpPlc      :: Bool
     , poDumpTrace    :: Bool
+    , poCertifier    :: Bool
     , poOptimize     :: Bool
     }
 
@@ -138,6 +139,7 @@ parsePluginArgs args = do
             , poDumpPir = elem "dump-pir" args
             , poDumpPlc = elem "dump-plc" args
             , poDumpTrace = elem "dump-trace" args
+            , poCertifier = elem "certifier" args
             , poOptimize = notElem "dont-optimize" args
             }
     -- TODO: better parsing with failures
@@ -351,13 +353,15 @@ runCompiler opts expr = do
     let writeTrace toString file =
           liftIO . writeFile file . toString $ trace
 
-    let writeCertifier file = liftIO . writeFile file . show $ certify trace
-
     when (poDumpTrace opts) $ do
+      liftIO $ putStrLn "Dumping traces..."
       writeTrace toTex "compilation-trace-tex"
       writeTrace toCoq "compilation-trace"
       writeTrace dumpTracePretty "compilation-trace-readable"
-      writeCertifier "certifier-results"
+
+    when (poCertifier opts) $ do
+      liftIO $ putStrLn "Certifying..."
+      liftIO . writeFile "certifier-results" . show $ certify trace
 
     let plcP = PLC.Program () (PLC.defaultVersion ()) $ void plcT
     when (poDumpPlc opts) $ dumpPLC "PLC (Program)" plcP
