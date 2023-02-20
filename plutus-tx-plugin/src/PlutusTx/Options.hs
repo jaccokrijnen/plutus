@@ -40,6 +40,7 @@ data PluginOptions = PluginOptions
     , _posDumpPir                        :: Bool
     , _posDumpPlc                        :: Bool
     , _posDumpUPlc                       :: Bool
+    , _posCertifier                      :: Bool
     , _posOptimize                       :: Bool
     , _posPedantic                       :: Bool
     , _posVerbose                        :: Bool
@@ -140,6 +141,9 @@ pluginOptions =
         , let k = "dump-uplc"
               desc = "Dump Untyped Plutus Core"
            in (k, PluginOption typeRep (setTrue k) posDumpUPlc desc)
+        , let k = "certifier"
+              desc = "Run certifier prototype"
+           in (k, PluginOption typeRep (setTrue k) posCertifier desc)
         , let k = "optimize"
               desc = "Run optimization passes such as simplification and floating let-bindings."
            in (k, PluginOption typeRep (setTrue k) posOptimize desc)
@@ -206,6 +210,7 @@ defaultPluginOptions =
         , _posDumpPir = False
         , _posDumpPlc = False
         , _posDumpUPlc = False
+        , _posCertifier = False
         , _posOptimize = True
         , _posPedantic = False
         , _posVerbose = False
