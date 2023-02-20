@@ -145,6 +145,8 @@ library
     PlutusCore.TypeCheck.Internal
     PlutusIR
     PlutusIR.Analysis.RetainedSize
+    PlutusIR.Certifier.Extracted
+    PlutusIR.Certifier.Glue
     PlutusIR.Compiler
     PlutusIR.Compiler.Definitions
     PlutusIR.Compiler.Names
