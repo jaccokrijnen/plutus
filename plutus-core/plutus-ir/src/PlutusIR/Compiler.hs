@@ -6,6 +6,7 @@
 module PlutusIR.Compiler (
     compileTerm,
     compileToReadable,
+    compileToReadable',
     compileReadableToPlc,
     Compiling,
     Error (..),
@@ -33,7 +34,11 @@ module PlutusIR.Compiler (
     ccTypeCheckConfig,
     PirTCConfig(..),
     AllowEscape(..),
-    toDefaultCompilationCtx) where
+    toDefaultCompilationCtx,
+    PassInfo(..),
+    PassRes,
+    CompilationTrace(..)
+    ) where
 
 import PlutusIR
 
@@ -182,6 +187,36 @@ compileToReadable =
     >=> floatTerm
     >=> through check
 
+compileToReadable'
+  :: (Compiling m e uni fun a, b ~ Provenance a)
+  => Term TyName Name uni fun a
+  -> m (Term TyName Name uni fun b, CompilationTrace uni fun b)
+compileToReadable' x0 = do
+    x1 <- (pure . original) x0
+    -- We need globally unique names for typechecking, floating, and compiling non-strict bindings
+    logVerbose "  !!! rename"
+    x2 <- PLC.rename x1
+    x3 <- through typeCheckTerm x2
+    logVerbose "  !!! removeDeadBindings"
+    (x5, x4) <- withVer . flip DeadCode.removeDeadBindings' $ x3
+    logVerbose "  !!! simplifyTerm"
+    x6 <- simplifyTerm x4
+    logVerbose "  !!! floatTerm"
+    x7 <- floatTerm x5
+    x8 <- through check x6
+
+    let ctrace = CompilationTrace x1 $
+          [ (PassRename    , x2)
+          , (PassTypeCheck , x3)
+          , (PassRename    , x4)
+          , (PassDeadCode  , x5)
+          -- todo simplifytrace  x6
+          , (PassFloatTerm , x7)
+          , (PassTypeCheck , x8)
+          ]
+
+    return (x8, ctrace)
+
 -- | The 2nd half of the PIR compiler pipeline.
 -- Compiles a 'Term' into a PLC Term, by removing/translating step-by-step the PIR's language constructs to PLC.
 -- Note: the result *does* have globally unique names.
@@ -231,3 +266,26 @@ compileTerm =
   >=> compileToReadable
   >=> (<$ logVerbose "!!! compileReadableToPlc")
   >=> compileReadableToPlc
+
+
+
+data PassInfo
+  = PassRename
+  | PassTypeCheck
+  | PassInline [Name] -- The Names that were unconditionally inlined and thus eliminated
+  | PassDeadCode
+  | PassThunkRec
+  | PassFloatTerm
+  | PassLetNonStrict
+  | PassLetTypes
+  | PassLetRec
+  | PassLetNonRec
+  deriving (Show)
+
+
+type PassRes uni fun a = (PassInfo, Term TyName Name uni fun a)
+
+data CompilationTrace uni fun a =
+  CompilationTrace
+    (Term TyName Name uni fun a)
+    [PassRes uni fun a]

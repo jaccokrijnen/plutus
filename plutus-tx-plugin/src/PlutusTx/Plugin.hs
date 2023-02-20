@@ -39,6 +39,7 @@ import PlutusCore.Quote
 import UntypedPlutusCore qualified as UPLC
 
 import PlutusIR qualified as PIR
+import PlutusIR.Certifier.Glue qualified as Certifier
 import PlutusIR.Compiler qualified as PIR
 import PlutusIR.Compiler.Definitions qualified as PIR
 import PlutusTx.Options
@@ -371,13 +372,14 @@ runCompiler moduleName opts expr = do
             & set (PLC.coSimplifyOpts . UPLC.soMaxSimplifierIterations) (_posMaxSimplifierIterations opts)
             & set (PLC.coSimplifyOpts . UPLC.soInlineHints) hints
 
+
     -- GHC.Core -> Pir translation.
     pirT <- PIR.runDefT AnnOther $ compileExprWithDefs expr
     when (_posDumpPir opts) . liftIO $
         dumpFlat (PIR.Program () (void pirT)) "initial PIR program" (moduleName ++ ".pir-initial.flat")
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
-    spirT <- flip runReaderT pirCtx $ PIR.compileToReadable pirT
+    (spirT, trace) <- flip runReaderT pirCtx $ PIR.compileToReadable' pirT
     let spirP = PIR.Program () . void $ spirT
     when (_posDumpPir opts) . liftIO $ dumpFlat spirP "simplified PIR program" (moduleName ++ ".pir-simplified.flat")
 
@@ -389,6 +391,11 @@ runCompiler moduleName opts expr = do
     -- We do this after dumping the programs so that if we fail typechecking we still get the dump.
     when (_posDoTypecheck opts) . void $
         liftExcept $ PLC.inferTypeOfProgram plcTcConfig (plcP $> AnnOther)
+
+    when (_posCertifier opts) $ do
+      liftIO $ putStrLn "Certifying..."
+      let res = certify trace
+      liftIO . writeFile "certifier-results" . show $ res
 
     uplcT <- flip runReaderT plcOpts $ PLC.compileTerm plcT
     dbT <- liftExcept $ UPLC.deBruijnTerm uplcT
@@ -468,3 +475,14 @@ makePrimitiveNameInfo names = do
         pure (name, thing)
     pure $ Map.fromList infos
 
+-- Loop through all pre-post terms of dead code elimination
+-- Currently done as a post-processing step, because PlutusIR.Compiler works on
+-- a representation that is polymorphic in uni and func parameters. Certifier
+-- needs them instantiated to DefaultUni and DefaultFun.
+certify :: PIR.CompilationTrace PLC.DefaultUni PLC.DefaultFun a -> [(PIR.PassInfo, Bool, Certifier.Term a, Certifier.Term a)]
+certify (PIR.CompilationTrace start ps) = certify' start ps
+  where
+    certify' _    []                 = []
+    certify' pre ((pass, post) : ps) = case pass of
+        PIR.PassDeadCode -> [(PIR.PassDeadCode, Certifier.is_dead_code pre post, pre, post)] ++ certify' post ps
+        _                -> certify' post ps
