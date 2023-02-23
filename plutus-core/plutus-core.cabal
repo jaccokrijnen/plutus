@@ -468,6 +468,7 @@ test-suite plutus-ir-test
     , plutus-core-testlib  ^>=1.1
     , tasty
     , tasty-hedgehog
+    , tasty-hunit
     , text
 
 test-suite untyped-plutus-core-test

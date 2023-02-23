@@ -11,6 +11,7 @@ module PlutusIR.Test where
 
 import PlutusPrelude
 import Test.Tasty.Extras
+import Test.Tasty.HUnit
 
 import Control.Exception
 import Control.Lens hiding (op, transform)
@@ -78,6 +79,21 @@ compileAndMaybeTypecheck doTypecheck pir = do
             plcConcrete <- runExceptT $ void $ PLC.inferType tcConfig compiled
             liftEither $ first (view (re _PLCError)) plcConcrete
         pure compiled
+
+boolTest :: forall a. String -> Parser a -> (a -> Bool) -> TestNested
+boolTest name parser op = do
+  dir <- joinPath <$> ask
+  return $
+    testCase name $ do
+      let testFile = dir </> name
+      tTest <- parseFile testFile
+      assertBool name (op tTest)
+      where
+        parseFile :: FilePath -> IO a
+        parseFile path = do
+          txt <- liftIO (T.readFile path)
+          let eRes = runQuoteT $ parse parser name txt
+          either (\(_ :: ParserErrorBundle) -> assertFailure "parse error") return eRes
 
 withGoldenFileM :: String -> (T.Text -> IO T.Text) -> TestNested
 withGoldenFileM name op = do

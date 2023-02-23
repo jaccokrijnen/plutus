@@ -5,6 +5,7 @@
 
 module TransformSpec (transform) where
 
+import Test.Tasty
 import Test.Tasty.Extras
 
 import PlutusCore.Quote
@@ -15,6 +16,7 @@ import PlutusCore.Test
 import PlutusPrelude
 
 import PlutusIR.Analysis.RetainedSize qualified as RetainedSize
+import PlutusIR.Certifier.Glue qualified as Certifier
 import PlutusIR.Error as PIR
 import PlutusIR.Parser
 import PlutusIR.Test
@@ -164,25 +166,34 @@ unwrapCancel =
 
 deadCode :: TestNested
 deadCode =
-    testNested "deadCode"
-    $ map (goldenPir (runQuote . DeadCode.removeDeadBindings def) pTerm)
-    [ "typeLet"
-    , "termLet"
-    , "strictLet"
-    , "nonstrictLet"
-    , "datatypeLiveType"
-    , "datatypeLiveConstr"
-    , "datatypeLiveDestr"
-    , "datatypeDead"
-    , "singleBinding"
-    , "builtinBinding"
-    , "etaBuiltinBinding"
-    , "nestedBindings"
-    , "nestedBindingsIndirect"
-    , "recBindingSimple"
-    , "recBindingComplex"
-    , "pruneDatatype"
-    ]
+    testNested "deadCode" (map test names)
+    where
+        test name = do
+          t1 <- testGolden name
+          t2 <- testCertify name
+          return (testGroup name [testGroup "golden" [t1], testGroup "certify" [t2]])
+        testGolden name = goldenPir (runQuote . DeadCode.removeDeadBindings def) pTerm name
+        testCertify name = boolTest name pTerm $ \t ->
+          let (tPost, tPre) = runQuote (DeadCode.removeDeadBindings' def t)
+          in Certifier.is_dead_code tPre tPost
+        names =
+            [ "typeLet"
+            , "termLet"
+            , "strictLet"
+            , "nonstrictLet"
+            , "datatypeLiveType"
+            , "datatypeLiveConstr"
+            , "datatypeLiveDestr"
+            , "datatypeDead"
+            , "singleBinding"
+            , "builtinBinding"
+            , "etaBuiltinBinding"
+            , "nestedBindings"
+            , "nestedBindingsIndirect"
+            , "recBindingSimple"
+            , "recBindingComplex"
+            , "pruneDatatype"
+            ]
 
 retainedSize :: TestNested
 retainedSize =
