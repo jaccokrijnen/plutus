@@ -175,7 +175,7 @@ deadCode =
         testGolden name = goldenPir (runQuote . DeadCode.removeDeadBindings def) pTerm name
         testCertify name = boolTest name pTerm $ \t ->
           let (tPost, tPre) = runQuote (DeadCode.removeDeadBindings' def t)
-          in Certifier.is_dead_code tPre tPost
+          in Certifier.is_unique tPre && Certifier.is_dead_code tPre tPost
         names =
             [ "typeLet"
             , "termLet"

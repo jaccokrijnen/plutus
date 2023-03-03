@@ -28,6 +28,9 @@ type Any = GHC.Base.Any
 type Any = ()
 #endif
 
+__ :: any
+__ = Prelude.error "Logical or arity value used"
+
 eq_rect :: a1 -> a2 -> a1 -> a2
 eq_rect _ f _ =
   f
@@ -38,6 +41,16 @@ data Unit =
 data Bool =
    True
  | False
+
+bool_rect :: a1 -> a1 -> Bool -> a1
+bool_rect f f0 b =
+  case b of {
+   True  -> f;
+   False -> f0}
+
+bool_rec :: a1 -> a1 -> Bool -> a1
+bool_rec =
+  bool_rect
 
 andb :: Bool -> Bool -> Bool
 andb b1 b2 =
@@ -61,6 +74,10 @@ data Nat =
    O
  | S Nat
 
+data Option a =
+   Some a
+ | None
+
 data Prod a b =
    Pair a b
 
@@ -71,6 +88,25 @@ data List a =
 data Sumbool =
    Left
  | Right
+
+sumbool_rect :: (() -> a1) -> (() -> a1) -> Sumbool -> a1
+sumbool_rect f f0 s =
+  case s of {
+   Left  -> f __;
+   Right -> f0 __}
+
+sumbool_rec :: (() -> a1) -> (() -> a1) -> Sumbool -> a1
+sumbool_rec =
+  sumbool_rect
+
+bool_dec :: Bool -> Bool -> Sumbool
+bool_dec b1 b2 =
+  bool_rec (\x -> case x of {
+                   True  -> Left;
+                   False -> Right}) (\x ->
+    case x of {
+     True  -> Right;
+     False -> Left}) b1 b2
 
 eqb :: Bool -> Bool -> Bool
 eqb b1 b2 =
@@ -182,6 +218,17 @@ eqb2 x y =
 data Ascii0 =
    Ascii Bool Bool Bool Bool Bool Bool Bool Bool
 
+ascii_rect :: (Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
+              -> a1) -> Ascii0 -> a1
+ascii_rect f a =
+  case a of {
+   Ascii x x0 x1 x2 x3 x4 x5 x6 -> f x x0 x1 x2 x3 x4 x5 x6}
+
+ascii_rec :: (Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool ->
+             a1) -> Ascii0 -> a1
+ascii_rec =
+  ascii_rect
+
 zero :: Ascii0
 zero =
   Ascii False False False False False False False False
@@ -194,6 +241,25 @@ shift :: Bool -> Ascii0 -> Ascii0
 shift c a =
   case a of {
    Ascii a1 a2 a3 a4 a5 a6 a7 _ -> Ascii c a1 a2 a3 a4 a5 a6 a7}
+
+ascii_dec :: Ascii0 -> Ascii0 -> Sumbool
+ascii_dec a b =
+  ascii_rec (\b0 b1 b2 b3 b4 b5 b6 b7 x ->
+    case x of {
+     Ascii b8 b9 b10 b11 b12 b13 b14 b15 ->
+      sumbool_rec (\_ ->
+        sumbool_rec (\_ ->
+          sumbool_rec (\_ ->
+            sumbool_rec (\_ ->
+              sumbool_rec (\_ ->
+                sumbool_rec (\_ ->
+                  sumbool_rec (\_ ->
+                    sumbool_rec (\_ -> Left) (\_ -> Right) (bool_dec b7 b15))
+                    (\_ -> Right) (bool_dec b6 b14)) (\_ -> Right)
+                  (bool_dec b5 b13)) (\_ -> Right) (bool_dec b4 b12)) (\_ ->
+              Right) (bool_dec b3 b11)) (\_ -> Right) (bool_dec b2 b10))
+          (\_ -> Right) (bool_dec b1 b9)) (\_ -> Right) (bool_dec b0 b8)}) a
+    b
 
 eqb3 :: Ascii0 -> Ascii0 -> Bool
 eqb3 a b =
@@ -244,6 +310,27 @@ data String =
    EmptyString
  | String0 Ascii0 String
 
+string_rect :: a1 -> (Ascii0 -> String -> a1 -> a1) -> String -> a1
+string_rect f f0 s =
+  case s of {
+   EmptyString  -> f;
+   String0 a s0 -> f0 a s0 (string_rect f f0 s0)}
+
+string_rec :: a1 -> (Ascii0 -> String -> a1 -> a1) -> String -> a1
+string_rec =
+  string_rect
+
+string_dec :: String -> String -> Sumbool
+string_dec s1 s2 =
+  string_rec (\x -> case x of {
+                     EmptyString -> Left;
+                     String0 _ _ -> Right}) (\a _ h x ->
+    case x of {
+     EmptyString -> Right;
+     String0 a0 s0 ->
+      sumbool_rec (\_ -> sumbool_rec (\_ -> Left) (\_ -> Right) (h s0))
+        (\_ -> Right) (ascii_dec a a0)}) s1 s2
+
 eqb4 :: String -> String -> Bool
 eqb4 s1 s2 =
   case s1 of {
@@ -257,6 +344,106 @@ eqb4 s1 s2 =
       case eqb3 c1 c2 of {
        True  -> eqb4 s1' s2';
        False -> False}}}
+
+type Decidable = Sumbool
+
+type Dec = Decidable
+  -- singleton inductive, whose constructor was Build_Dec
+
+dec :: Dec -> Decidable
+dec dec0 =
+  dec0
+
+type DecOpt =
+  Nat -> Option Bool
+  -- singleton inductive, whose constructor was Build_DecOpt
+
+decOpt :: DecOpt -> Nat -> Option Bool
+decOpt decOpt0 =
+  decOpt0
+
+dec_decOpt :: Dec -> DecOpt
+dec_decOpt h _ =
+  case dec h of {
+   Left  -> Some True;
+   Right -> Some False}
+
+checker_backtrack :: (List (Unit -> Option Bool)) -> Option Bool
+checker_backtrack l =
+  let {
+   aux l0 b =
+     case l0 of {
+      Nil -> case b of {
+              True  -> None;
+              False -> Some False};
+      Cons t ts ->
+       case t Tt of {
+        Some y -> case y of {
+                   True  -> Some True;
+                   False -> aux ts b};
+        None -> aux ts True}}}
+  in aux l False
+
+type Dec_Eq a =
+  a -> a -> Decidable
+  -- singleton inductive, whose constructor was Build_Dec_Eq
+
+dec_eq :: (Dec_Eq a1) -> a1 -> a1 -> Decidable
+dec_eq dec_Eq =
+  dec_Eq
+
+eq__Dec :: (Dec_Eq a1) -> a1 -> a1 -> Dec
+eq__Dec =
+  dec_eq
+
+dec_eq_string :: Dec_Eq String
+dec_eq_string =
+  string_dec
+
+forall2b :: (a1 -> a1 -> Bool) -> (List a1) -> (List a1) -> Bool
+forall2b p xs ys =
+  case xs of {
+   Nil -> case ys of {
+           Nil      -> True;
+           Cons _ _ -> False};
+   Cons x xs0 ->
+    case ys of {
+     Nil        -> False;
+     Cons y ys0 -> andb (p x y) (forall2b p xs0 ys0)}}
+
+decOptNameIn :: String -> (List String) -> DecOpt
+decOptNameIn x_ xs_ =
+  let {
+   aux_arb = let {
+              aux_arb init_size size x_0 xs_0 =
+                case size of {
+                 O ->
+                  checker_backtrack (Cons (\_ ->
+                    case xs_0 of {
+                     Nil -> Some False;
+                     Cons unkn_0_ _ ->
+                      decOpt (dec_decOpt (eq__Dec dec_eq_string unkn_0_ x_0))
+                        init_size}) (Cons (\_ -> None) Nil));
+                 S size' ->
+                  checker_backtrack (Cons (\_ ->
+                    case xs_0 of {
+                     Nil -> Some False;
+                     Cons unkn_2_ _ ->
+                      decOpt (dec_decOpt (eq__Dec dec_eq_string unkn_2_ x_0))
+                        init_size}) (Cons (\_ ->
+                    case xs_0 of {
+                     Nil -> Some False;
+                     Cons x' xs ->
+                      case decOpt (dec_decOpt (eq__Dec dec_eq_string x_0 x'))
+                             init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' x_0 xs};
+                       None -> None}}) Nil))}}
+             in aux_arb}
+  in
+  (\size -> aux_arb size size x_ xs_)
 
 data Recursivity =
    NonRec
@@ -289,7 +476,7 @@ defaultUni_rec =
   defaultUni_rect
 
 data Some0 f =
-   Some DefaultUni f
+   Some' DefaultUni f
 
 type UniType = Any
 
@@ -374,6 +561,754 @@ data Binding name tyname binderName binderTyname =
  | TypeBind (Tvdecl binderTyname) (Ty tyname binderTyname)
  | DatatypeBind (Dtdecl tyname binderName binderTyname)
 
+bv_constructors :: (List (Constr String String String)) -> List String
+bv_constructors cs =
+  case cs of {
+   Nil -> Nil;
+   Cons c cs' ->
+    case c of {
+     Constructor v _ ->
+      case v of {
+       VarDecl x _ -> Cons x (bv_constructors cs')}}}
+
+decOptappears_bound_in_ty :: String -> (Ty String String) -> DecOpt
+decOptappears_bound_in_ty x_ ty_ =
+  let {
+   aux_arb = let {
+              aux_arb init_size size x_0 ty_0 =
+                case size of {
+                 O ->
+                  checker_backtrack (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Forall unkn_4_ _ _ ->
+                      decOpt (dec_decOpt (eq__Dec dec_eq_string unkn_4_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Lam unkn_6_ _ _ ->
+                      decOpt (dec_decOpt (eq__Dec dec_eq_string unkn_6_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ -> None) Nil)));
+                 S size' ->
+                  checker_backtrack (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Forall unkn_14_ _ _ ->
+                      decOpt
+                        (dec_decOpt (eq__Dec dec_eq_string unkn_14_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Lam unkn_16_ _ _ ->
+                      decOpt
+                        (dec_decOpt (eq__Dec dec_eq_string unkn_16_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Fun t1 _ -> aux_arb init_size size' x_0 t1;
+                     _           -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Fun _ t2 -> aux_arb init_size size' x_0 t2;
+                     _           -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_IFix f _ -> aux_arb init_size size' x_0 f;
+                     _           -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_IFix _ t -> aux_arb init_size size' x_0 t;
+                     _           -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Forall y _ t ->
+                      case decOpt (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                             init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' y t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Lam y _ t ->
+                      case decOpt (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                             init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' y t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_App t1 _ -> aux_arb init_size size' x_0 t1;
+                     _           -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_App _ t2 -> aux_arb init_size size' x_0 t2;
+                     _           -> Some False}) Nil))))))))))}}
+             in aux_arb}
+  in
+  (\size -> aux_arb size size x_ ty_)
+
+decOptappears_bound_in_tm :: String -> (Term String String String String) ->
+                             DecOpt
+decOptappears_bound_in_tm x_ tm_ =
+  let {
+   aux_arb = let {
+              aux_arb init_size size x_0 tm_0 =
+                case size of {
+                 O ->
+                  checker_backtrack (Cons (\_ ->
+                    case tm_0 of {
+                     LamAbs unkn_20_ _ _ ->
+                      decOpt
+                        (dec_decOpt (eq__Dec dec_eq_string unkn_20_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TermBind _ v _ ->
+                          case v of {
+                           VarDecl unkn_30_ _ ->
+                            decOpt
+                              (dec_decOpt
+                                (eq__Dec dec_eq_string unkn_30_ x_0))
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         DatatypeBind d ->
+                          case d of {
+                           Datatype _ _ mfunc cs ->
+                            let {unkn_32_ = bv_constructors cs} in
+                            decOpt (decOptNameIn x_0 (Cons mfunc unkn_32_))
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ -> None) Nil))));
+                 S size' ->
+                  checker_backtrack (Cons (\_ ->
+                    case tm_0 of {
+                     LamAbs unkn_33_ _ _ ->
+                      decOpt
+                        (dec_decOpt (eq__Dec dec_eq_string unkn_33_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TermBind _ v _ ->
+                          case v of {
+                           VarDecl unkn_43_ _ ->
+                            decOpt
+                              (dec_decOpt
+                                (eq__Dec dec_eq_string unkn_43_ x_0))
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         DatatypeBind d ->
+                          case d of {
+                           Datatype _ _ mfunc cs ->
+                            let {unkn_45_ = bv_constructors cs} in
+                            decOpt (decOptNameIn x_0 (Cons mfunc unkn_45_))
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     LamAbs y _ t ->
+                      case decOpt (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                             init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' x_0 t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Apply t1 _ -> aux_arb init_size size' x_0 t1;
+                     _          -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Apply _ t2 -> aux_arb init_size size' x_0 t2;
+                     _          -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     TyAbs _ _ t -> aux_arb init_size size' x_0 t;
+                     _           -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     TyInst t _ -> aux_arb init_size size' x_0 t;
+                     _          -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     IWrap _ _ t -> aux_arb init_size size' x_0 t;
+                     _           -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Unwrap t -> aux_arb init_size size' x_0 t;
+                     _        -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let _ l t0 ->
+                      case l of {
+                       Nil      -> aux_arb init_size size' x_0 t0;
+                       Cons _ _ -> Some False};
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let recty l t0 ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons _ bs ->
+                        aux_arb init_size size' x_0 (Let recty bs t0)};
+                     _ -> Some False}) (Cons (\_ ->
+                    case tm_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TermBind _ v t ->
+                          case v of {
+                           VarDecl y _ ->
+                            case decOpt
+                                   (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                                   init_size of {
+                             Some res_b ->
+                              case res_b of {
+                               True  -> Some False;
+                               False -> aux_arb init_size size' x_0 t};
+                             None -> None}};
+                         _ -> Some False}};
+                     _ -> Some False}) Nil)))))))))))))}}
+             in aux_arb}
+  in
+  (\size -> aux_arb size size x_ tm_)
+
+decOptappears_bound_in_ann :: String -> (Term String String String String) ->
+                              DecOpt
+decOptappears_bound_in_ann x_ ann_ =
+  let {
+   aux_arb = let {
+              aux_arb init_size size x_0 ann_0 =
+                case size of {
+                 O ->
+                  checker_backtrack (Cons (\_ ->
+                    case ann_0 of {
+                     LamAbs _ t _ ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     TyAbs unkn_49_ _ _ ->
+                      decOpt
+                        (dec_decOpt (eq__Dec dec_eq_string unkn_49_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     TyInst _ t ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     IWrap f _ _ ->
+                      decOpt (decOptappears_bound_in_ty x_0 f) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     IWrap _ t _ ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Error t ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TermBind _ v _ ->
+                          case v of {
+                           VarDecl _ t ->
+                            decOpt (decOptappears_bound_in_ty x_0 t)
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TypeBind t _ ->
+                          case t of {
+                           TyVarDecl unkn_57_ _ ->
+                            decOpt
+                              (dec_decOpt
+                                (eq__Dec dec_eq_string unkn_57_ x_0))
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TypeBind t t0 ->
+                          case t of {
+                           TyVarDecl y _ ->
+                            case decOpt
+                                   (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                                   init_size of {
+                             Some res_b ->
+                              case res_b of {
+                               True -> Some False;
+                               False ->
+                                decOpt (decOptappears_bound_in_ty x_0 t0)
+                                  init_size};
+                             None -> None}};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         DatatypeBind d ->
+                          case d of {
+                           Datatype t _ _ _ ->
+                            case t of {
+                             TyVarDecl unkn_58_ _ ->
+                              decOpt
+                                (dec_decOpt
+                                  (eq__Dec dec_eq_string unkn_58_ x_0))
+                                init_size}};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ -> None) Nil)))))))))));
+                 S size' ->
+                  checker_backtrack (Cons (\_ ->
+                    case ann_0 of {
+                     LamAbs _ t _ ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     TyAbs unkn_62_ _ _ ->
+                      decOpt
+                        (dec_decOpt (eq__Dec dec_eq_string unkn_62_ x_0))
+                        init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     TyInst _ t ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     IWrap f _ _ ->
+                      decOpt (decOptappears_bound_in_ty x_0 f) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     IWrap _ t _ ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Error t ->
+                      decOpt (decOptappears_bound_in_ty x_0 t) init_size;
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TermBind _ v _ ->
+                          case v of {
+                           VarDecl _ t ->
+                            decOpt (decOptappears_bound_in_ty x_0 t)
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TypeBind t _ ->
+                          case t of {
+                           TyVarDecl unkn_70_ _ ->
+                            decOpt
+                              (dec_decOpt
+                                (eq__Dec dec_eq_string unkn_70_ x_0))
+                              init_size};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TypeBind t t0 ->
+                          case t of {
+                           TyVarDecl y _ ->
+                            case decOpt
+                                   (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                                   init_size of {
+                             Some res_b ->
+                              case res_b of {
+                               True -> Some False;
+                               False ->
+                                decOpt (decOptappears_bound_in_ty x_0 t0)
+                                  init_size};
+                             None -> None}};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         DatatypeBind d ->
+                          case d of {
+                           Datatype t _ _ _ ->
+                            case t of {
+                             TyVarDecl unkn_71_ _ ->
+                              decOpt
+                                (dec_decOpt
+                                  (eq__Dec dec_eq_string unkn_71_ x_0))
+                                init_size}};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     LamAbs _ _ t -> aux_arb init_size size' x_0 t;
+                     _            -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Apply t1 _ -> aux_arb init_size size' x_0 t1;
+                     _          -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Apply _ t2 -> aux_arb init_size size' x_0 t2;
+                     _          -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     TyAbs y _ t ->
+                      case decOpt (dec_decOpt (eq__Dec dec_eq_string x_0 y))
+                             init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' x_0 t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     TyInst t _ -> aux_arb init_size size' x_0 t;
+                     _          -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     IWrap _ _ t -> aux_arb init_size size' x_0 t;
+                     _           -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Unwrap t -> aux_arb init_size size' x_0 t;
+                     _        -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l t0 ->
+                      case l of {
+                       Nil      -> aux_arb init_size size' x_0 t0;
+                       Cons _ _ -> Some False};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let recty l t0 ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons _ bs ->
+                        aux_arb init_size size' x_0 (Let recty bs t0)};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ann_0 of {
+                     Let _ l _ ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b _ ->
+                        case b of {
+                         TermBind _ _ t -> aux_arb init_size size' x_0 t;
+                         _              -> Some False}};
+                     _ -> Some False}) Nil))))))))))))))))))))}}
+             in aux_arb}
+  in
+  (\size -> aux_arb size size x_ ann_)
+
+decOptunique_ty :: (Ty String String) -> DecOpt
+decOptunique_ty ty_ =
+  let {
+   aux_arb = let {
+              aux_arb init_size size ty_0 =
+                case size of {
+                 O ->
+                  checker_backtrack (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Builtin _ -> Some True;
+                     _            -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Var _ -> Some True;
+                     _        -> Some False}) (Cons (\_ -> None) Nil)));
+                 S size' ->
+                  checker_backtrack (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Builtin _ -> Some True;
+                     _            -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Var _ -> Some True;
+                     _        -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Fun t1 t2 ->
+                      case aux_arb init_size size' t1 of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> aux_arb init_size size' t2;
+                         False -> Some False};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Forall x _ t ->
+                      case decOpt (decOptappears_bound_in_ty x t) init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_IFix f t ->
+                      case aux_arb init_size size' f of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> aux_arb init_size size' t;
+                         False -> Some False};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_Lam x _ t ->
+                      case decOpt (decOptappears_bound_in_ty x t) init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Ty_App t1 t2 ->
+                      case aux_arb init_size size' t1 of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> aux_arb init_size size' t2;
+                         False -> Some False};
+                       None -> None};
+                     _ -> Some False}) Nil)))))))}}
+             in aux_arb}
+  in
+  (\size -> aux_arb size size ty_)
+
+decOptunique_tm :: (Term String String String String) -> DecOpt
+decOptunique_tm ty_ =
+  let {
+   aux_arb = let {
+              aux_arb init_size size ty_0 =
+                case size of {
+                 O ->
+                  checker_backtrack (Cons (\_ ->
+                    case ty_0 of {
+                     Var _ -> Some True;
+                     _     -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Constant _ -> Some True;
+                     _          -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Builtin _ -> Some True;
+                     _         -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Error t -> decOpt (decOptunique_ty t) init_size;
+                     _       -> Some False}) (Cons (\_ -> None) Nil)))));
+                 S size' ->
+                  checker_backtrack (Cons (\_ ->
+                    case ty_0 of {
+                     Var _ -> Some True;
+                     _     -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Constant _ -> Some True;
+                     _          -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Builtin _ -> Some True;
+                     _         -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Error t -> decOpt (decOptunique_ty t) init_size;
+                     _       -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     LamAbs x t t0 ->
+                      case decOpt (decOptappears_bound_in_tm x t0) init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True -> Some False;
+                         False ->
+                          case aux_arb init_size size' t0 of {
+                           Some res_b0 ->
+                            case res_b0 of {
+                             True  -> decOpt (decOptunique_ty t) init_size;
+                             False -> Some False};
+                           None -> None}};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Apply t1 t2 ->
+                      case aux_arb init_size size' t1 of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> aux_arb init_size size' t2;
+                         False -> Some False};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     TyAbs x _ t ->
+                      case decOpt (decOptappears_bound_in_ann x t) init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> Some False;
+                         False -> aux_arb init_size size' t};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     TyInst t t0 ->
+                      case aux_arb init_size size' t of {
+                       Some res_b ->
+                        case res_b of {
+                         True  -> decOpt (decOptunique_ty t0) init_size;
+                         False -> Some False};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     IWrap f t t0 ->
+                      case decOpt (decOptunique_ty f) init_size of {
+                       Some res_b ->
+                        case res_b of {
+                         True ->
+                          case decOpt (decOptunique_ty t) init_size of {
+                           Some res_b0 ->
+                            case res_b0 of {
+                             True  -> aux_arb init_size size' t0;
+                             False -> Some False};
+                           None -> None};
+                         False -> Some False};
+                       None -> None};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Unwrap t -> aux_arb init_size size' t;
+                     _        -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Let _ l t0 ->
+                      case l of {
+                       Nil      -> aux_arb init_size size' t0;
+                       Cons _ _ -> Some False};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Let recty l t0 ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b bs ->
+                        case b of {
+                         TermBind _ v t ->
+                          case v of {
+                           VarDecl x _ ->
+                            case decOpt (decOptappears_bound_in_tm x t)
+                                   init_size of {
+                             Some res_b ->
+                              case res_b of {
+                               True -> Some False;
+                               False ->
+                                case decOpt
+                                       (decOptappears_bound_in_tm x (Let
+                                         recty bs t0)) init_size of {
+                                 Some res_b0 ->
+                                  case res_b0 of {
+                                   True -> Some False;
+                                   False ->
+                                    case aux_arb init_size size' t of {
+                                     Some res_b1 ->
+                                      case res_b1 of {
+                                       True ->
+                                        aux_arb init_size size' (Let recty bs
+                                          t0);
+                                       False -> Some False};
+                                     None -> None}};
+                                 None -> None}};
+                             None -> None}};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Let recty l t0 ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b bs ->
+                        case b of {
+                         TypeBind t t1 ->
+                          case t of {
+                           TyVarDecl x _ ->
+                            case decOpt (decOptappears_bound_in_ty x t1)
+                                   init_size of {
+                             Some res_b ->
+                              case res_b of {
+                               True -> Some False;
+                               False ->
+                                case decOpt
+                                       (decOptappears_bound_in_ann x (Let
+                                         recty bs t0)) init_size of {
+                                 Some res_b0 ->
+                                  case res_b0 of {
+                                   True -> Some False;
+                                   False ->
+                                    case decOpt (decOptunique_ty t1)
+                                           init_size of {
+                                     Some res_b1 ->
+                                      case res_b1 of {
+                                       True ->
+                                        aux_arb init_size size' (Let recty bs
+                                          t0);
+                                       False -> Some False};
+                                     None -> None}};
+                                 None -> None}};
+                             None -> None}};
+                         _ -> Some False}};
+                     _ -> Some False}) (Cons (\_ ->
+                    case ty_0 of {
+                     Let recty l t0 ->
+                      case l of {
+                       Nil -> Some False;
+                       Cons b bs ->
+                        case b of {
+                         DatatypeBind d ->
+                          case d of {
+                           Datatype t _ _ _ ->
+                            case t of {
+                             TyVarDecl x _ ->
+                              case decOpt
+                                     (decOptappears_bound_in_ann x (Let recty
+                                       bs t0)) init_size of {
+                               Some res_b ->
+                                case res_b of {
+                                 True -> Some False;
+                                 False ->
+                                  aux_arb init_size size' (Let recty bs t0)};
+                               None -> None}}};
+                         _ -> Some False}};
+                     _ -> Some False}) Nil))))))))))))))}}
+             in aux_arb}
+  in
+  (\size -> aux_arb size size ty_)
+
+dec_unique :: (Term String String String String) -> Nat -> Option Bool
+dec_unique t =
+  decOpt (decOptunique_tm t)
+
 arity :: DefaultFun -> Nat
 arity df =
   case df of {
@@ -407,17 +1342,6 @@ is_value' n t =
 is_value :: (Term String String String String) -> Bool
 is_value =
   is_value' O
-
-forall2b :: (a1 -> a1 -> Bool) -> (List a1) -> (List a1) -> Bool
-forall2b p xs ys =
-  case xs of {
-   Nil -> case ys of {
-           Nil      -> True;
-           Cons _ _ -> False};
-   Cons x xs0 ->
-    case ys of {
-     Nil        -> False;
-     Cons y ys0 -> andb (p x y) (forall2b p xs0 ys0)}}
 
 data Binder_info =
    Let_bound Strictness
@@ -576,9 +1500,9 @@ valueOf_eqb =
 some_valueOf_eqb :: Eqb (Some0 ValueOf)
 some_valueOf_eqb x y =
   case x of {
-   Some t v ->
+   Some' t v ->
     case y of {
-     Some t' v' ->
+     Some' t' v' ->
       case defaultUni_dec t t' of {
        Left  -> valueOf_eqb t' (eq_rect t v t') v';
        Right -> False}}}
@@ -590,9 +1514,9 @@ typeIn_eqb _ =
 some_typeIn_eqb :: Eqb (Some0 ())
 some_typeIn_eqb x y =
   case x of {
-   Some t _ ->
+   Some' t _ ->
     case y of {
-     Some t' _ ->
+     Some' t' _ ->
       case defaultUni_dec t t' of {
        Left  -> typeIn_eqb t';
        Right -> False}}}

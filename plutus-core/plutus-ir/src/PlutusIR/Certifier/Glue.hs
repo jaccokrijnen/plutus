@@ -120,7 +120,7 @@ glueConstant (P.Some (P.ValueOf u x)) =
         -- P.DefaultUniBool       -> E.unsafeCoerce (glueBool x)
         -- P.DefaultUniString     -> E.unsafeCoerce (glueString x)
         -- P.DefaultUniByteString -> E.unsafeCoerce (glueString (show x))
-  in E.Some (glueDefaultUni u) (E.unsafeCoerce any)
+  in E.Some' (glueDefaultUni u) (E.unsafeCoerce any)
 
 glueInteger :: Integer -> E.Z
 glueInteger x
@@ -201,7 +201,7 @@ glueDefaultUni u = case u of
 -- glueBuiltinType :: P.Some (P.TypeIn P.DefaultUni) -> E.Some0 ()
 -- glueBuiltinType (P.Some (P.TypeIn u)) = E.Some (glueDefaultUni u) ()
 glueBuiltinType :: P.SomeTypeIn P.DefaultUni -> E.Some0 ()
-glueBuiltinType (P.SomeTypeIn u) = E.Some (glueDefaultUni u) ()
+glueBuiltinType (P.SomeTypeIn u) = E.Some' (glueDefaultUni u) ()
 
 glueType :: Type a -> EType
 glueType (P.TyVar _ tyname)        = E.Ty_Var (glueTyName tyname)
@@ -225,6 +225,11 @@ toBool E.False = False
 
 is_dead_code :: Term a -> Term a -> Bool
 is_dead_code t1 t2 = toBool $ E.dec_Term (glueTerm t1) (glueTerm t2)
+
+is_unique :: Term a -> Bool
+is_unique t = case E.dec_unique (glueTerm t) (intToNat 1000000) of
+  E.Some b -> toBool b
+  _        -> False
 
 is_eq :: Term a -> Term a -> Bool
 is_eq t1 t2 = toBool $ E.term_eqb (glueTerm t1) (glueTerm t2)
