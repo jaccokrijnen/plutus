@@ -145,7 +145,6 @@ library
     PlutusCore.TypeCheck.Internal
     PlutusIR
     PlutusIR.Analysis.RetainedSize
-    PlutusIR.Certifier.Extracted
     PlutusIR.Certifier.Glue
     PlutusIR.Compiler
     PlutusIR.Compiler.Definitions
@@ -315,6 +314,7 @@ library
     , multiset
     , nothunks
     , parser-combinators          >=0.4.0
+    , plutus-cert
     , prettyprinter               >=1.1.0.1
     , prettyprinter-configurable  ^>=1.1
     , primitive

@@ -29,6 +29,7 @@ packages: doc
           prettyprinter-configurable
           word-array
           stubs/plutus-ghc-stub
+          plutus-core/plutus-cert
 
 -- We never, ever, want this.
 write-ghc-environment-files: never
