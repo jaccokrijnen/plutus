@@ -83,32 +83,34 @@ glueRecursivity P.NonRec = E.NonRec
 
 glueDefaultFun :: P.DefaultFun -> E.DefaultFun
 glueDefaultFun = \case
-  _ -> E.AddInteger
-  -- P.AddInteger           -> E.AddInteger
-  -- P.SubtractInteger      -> E.SubtractInteger
-  -- P.MultiplyInteger      -> E.MultiplyInteger
-  -- P.DivideInteger        -> E.DivideInteger
-  -- P.QuotientInteger      -> E.QuotientInteger
-  -- P.RemainderInteger     -> E.RemainderInteger
-  -- P.ModInteger           -> E.ModInteger
-  -- P.LessThanInteger      -> E.LessThanInteger
-  -- P.LessThanEqInteger    -> E.LessThanEqInteger
+  P.AddInteger             -> E.AddInteger
+  P.SubtractInteger        -> E.SubtractInteger
+  P.MultiplyInteger        -> E.MultiplyInteger
+  P.DivideInteger          -> E.DivideInteger
+  P.QuotientInteger        -> E.QuotientInteger
+  P.RemainderInteger       -> E.RemainderInteger
+  P.ModInteger             -> E.ModInteger
+  P.LessThanInteger        -> E.LessThanInteger
+  P.LessThanEqualsInteger  -> E.LessThanEqInteger
   -- P.GreaterThanInteger   -> E.GreaterThanInteger
   -- P.GreaterThanEqInteger -> E.GreaterThanEqInteger
-  -- P.EqInteger            -> E.EqInteger
+  P.EqualsInteger          -> E.EqInteger
   -- P.Concatenate          -> E.Concatenate
   -- P.TakeByteString       -> E.TakeByteString
   -- P.DropByteString       -> E.DropByteString
-  -- P.SHA2                 -> E.SHA2
-  -- P.SHA3                 -> E.SHA3
-  -- P.VerifySignature      -> E.VerifySignature
-  -- P.EqByteString         -> E.EqByteString
-  -- P.LtByteString         -> E.LtByteString
+  P.Sha2_256               -> E.SHA2
+  P.Sha3_256               -> E.SHA3
+  P.VerifyEd25519Signature -> E.VerifySignature
+  P.EqualsByteString       -> E.EqByteString
+  P.LessThanByteString     -> E.LtByteString
   -- P.GtByteString         -> E.GtByteString
-  -- P.IfThenElse           -> E.IfThenElse
+  P.IfThenElse             -> E.IfThenElse
   -- P.CharToString         -> E.CharToString
-  -- P.Append               -> E.Append
-  -- P.Trace                -> E.Trace
+  P.AppendString           -> E.Append
+  P.Trace                  -> E.Trace
+
+  -- TODO: support current set of builtin functions
+  _                        -> E.Trace
 
 glueConstant :: P.Some (P.ValueOf P.DefaultUni) -> E.Some0 E.ValueOf
 glueConstant (P.Some (P.ValueOf u x)) =
@@ -120,7 +122,7 @@ glueConstant (P.Some (P.ValueOf u x)) =
         -- P.DefaultUniBool       -> E.unsafeCoerce (glueBool x)
         -- P.DefaultUniString     -> E.unsafeCoerce (glueString x)
         -- P.DefaultUniByteString -> E.unsafeCoerce (glueString (show x))
-  in E.Some (glueDefaultUni u) (E.unsafeCoerce any)
+  in E.Some' (glueDefaultUni u) (E.unsafeCoerce any)
 
 glueInteger :: Integer -> E.Z
 glueInteger x
@@ -180,9 +182,9 @@ glueBinding = \case
   (P.TypeBind _ tvd ty)  -> E.TypeBind (glueTyVarDecl tvd) (glueType ty) -- (TyVarDecl tyname a) (Type tyname uni a)
   (P.DatatypeBind _ dtd) -> E.DatatypeBind (glueDatatype dtd)
 
--- TODO: use show uniq? Fix rep in plutus
+-- This is hacky: we use (unique) strings for variable names in Coq,
+-- so we just `show` the unique
 glueName :: P.Name -> EString
--- glueName (P.Name str _uniq) = glueString (unpack str)
 glueName (P.Name _str uniq) = glueString (show uniq)
 
 glueTyName :: P.TyName -> EString
@@ -201,7 +203,7 @@ glueDefaultUni u = case u of
 -- glueBuiltinType :: P.Some (P.TypeIn P.DefaultUni) -> E.Some0 ()
 -- glueBuiltinType (P.Some (P.TypeIn u)) = E.Some (glueDefaultUni u) ()
 glueBuiltinType :: P.SomeTypeIn P.DefaultUni -> E.Some0 ()
-glueBuiltinType (P.SomeTypeIn u) = E.Some (glueDefaultUni u) ()
+glueBuiltinType (P.SomeTypeIn u) = E.Some' (glueDefaultUni u) ()
 
 glueType :: Type a -> EType
 glueType (P.TyVar _ tyname)        = E.Ty_Var (glueTyName tyname)
@@ -226,10 +228,10 @@ toBool E.False = False
 is_dead_code :: Term a -> Term a -> Bool
 is_dead_code t1 t2 = toBool $ E.dec_Term (glueTerm t1) (glueTerm t2)
 
--- is_unique :: Term a -> Bool
--- is_unique t = case E.dec_unique (glueTerm t) (intToNat 1000000) of
---   E.Some b -> toBool b
---   _        -> False
+is_unique :: Term a -> Bool
+is_unique t = case E.dec_unique (glueTerm t) (intToNat 1000000) of
+  E.Some b -> toBool b
+  _        -> False
 --
 -- is_eq :: Term a -> Term a -> Bool
 -- is_eq t1 t2 = toBool $ E.term_eqb (glueTerm t1) (glueTerm t2)
