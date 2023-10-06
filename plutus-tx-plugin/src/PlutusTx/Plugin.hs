@@ -19,7 +19,9 @@
 module PlutusTx.Plugin (plugin, plc) where
 
 import Data.Bifunctor
+import Data.Time.Clock (getCurrentTime)
 import PlutusPrelude
+import PlutusTx.Certifier (is_dead_code, is_unique)
 import PlutusTx.Code
 import PlutusTx.Compiler.Builtins
 import PlutusTx.Compiler.Error
@@ -64,7 +66,7 @@ import PlutusTx.Options
 
 import Language.Haskell.TH.Syntax as TH hiding (lift)
 
-import Control.Exception (throwIO)
+import Control.Exception (evaluate, throwIO)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Except
@@ -516,7 +518,27 @@ runCompiler moduleName opts expr = do
         dumpFlat (void pirP) "initial PIR program" (moduleName ++ ".pir-initial.flat")
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
-    spirP <- flip runReaderT pirCtx $ PIR.compileToReadable pirP
+    (spirP, tPre, tPost) <- flip runReaderT pirCtx $ PIR.compileToReadable' pirP
+
+    liftIO (evaluate tPre)
+    timeStart <- liftIO $ getCurrentTime
+    case (is_dead_code tPre tPre) of
+      True  -> liftIO $ putStrLn "is_dead_code: True"
+      False -> liftIO $ putStrLn "is_dead_code: False"
+    timeEnd <- liftIO $ getCurrentTime
+
+    liftIO $ print timeStart
+    liftIO $ print timeEnd
+
+    timeStart <- liftIO $ getCurrentTime
+    case (is_unique tPre) of
+      True  -> liftIO $ putStrLn "is_unique: True"
+      False -> liftIO $ putStrLn "is_unique: False"
+    timeEnd <- liftIO $ getCurrentTime
+
+    liftIO $ print timeStart
+    liftIO $ print timeEnd
+
     when (opts ^. posDumpPir) . liftIO $
         dumpFlat (void spirP) "simplified PIR program" (moduleName ++ ".pir-simplified.flat")
 

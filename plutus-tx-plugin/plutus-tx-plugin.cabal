@@ -60,6 +60,7 @@ library
     PlutusTx.Plugin
 
   other-modules:
+    PlutusTx.Certifier
     PlutusTx.Compiler.Binders
     PlutusTx.Compiler.Builtins
     PlutusTx.Compiler.Expr
@@ -83,12 +84,14 @@ library
     , flat                                  ^>=0.6
     , lens
     , mtl
+    , plutus-cert
     , plutus-core:{plutus-core, plutus-ir}  ^>=1.14
     , plutus-tx                             ^>=1.14
     , prettyprinter
     , PyF                                   >=0.11.1.0
     , template-haskell
     , text
+    , time
 
   if flag(use-ghc-stub)
     build-depends: plutus-ghc-stub

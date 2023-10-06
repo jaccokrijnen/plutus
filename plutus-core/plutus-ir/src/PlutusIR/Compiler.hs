@@ -7,6 +7,7 @@
 module PlutusIR.Compiler (
     compileProgram,
     compileToReadable,
+    compileToReadable',
     compileReadableToPlc,
     Compiling,
     Error (..),
@@ -214,7 +215,12 @@ compileToReadable
   => Program TyName Name uni fun b
   -> m (Program TyName Name uni fun b)
 compileToReadable (Program a v t) =
-  let pipeline =
+  let
+    pipeline
+            :: (Compiling m e uni fun a)
+            => Term TyName Name uni fun (Provenance a)
+            -> m (Term TyName Name uni fun (Provenance a))
+    pipeline =
         -- We need globally unique names for typechecking, floating, and compiling non-strict bindings
         (<$ logVerbose "  !!! rename")
         >=> PLC.rename
@@ -227,6 +233,67 @@ compileToReadable (Program a v t) =
         >=> floatOut
         >=> through check
   in validateOpts v >> Program a v <$> pipeline t
+
+-- | The 1st half of the PIR compiler pipeline up to floating/merging the lets.
+-- We stop momentarily here to give a chance to the tx-plugin
+-- to dump a "readable" version of pir (i.e. floated).
+compileToReadable'
+  :: (Compiling m e uni fun a, b ~ Provenance a)
+  => Program TyName Name uni fun b
+  -> m (Program TyName Name uni fun b, Term TyName Name uni fun b, Term TyName Name uni fun b)
+compileToReadable' (Program a v t) =
+  let
+    pipeline
+            :: (Compiling m e uni fun a)
+            => Term TyName Name uni fun (Provenance a)
+            -> m ( Term TyName Name uni fun (Provenance a)
+                 , Term TyName Name uni fun (Provenance a)
+                 , Term TyName Name uni fun (Provenance a)
+                 )
+    pipeline t1 = do
+        -- We need globally unique names for typechecking, floating, and compiling non-strict bindings
+        logVerbose "  !!! rename"
+        t2 <- PLC.rename t1
+        t3 <- through typeCheckTerm t2
+        logVerbose "  !!! removeDeadBindings"
+        (t4, tPre) <- withBuiltinsInfo . flip DeadCode.removeDeadBindings' $ t3
+        logVerbose "  !!! simplifyTerm"
+        t5 <- simplifyTerm t4
+        logVerbose "  !!! floatOut"
+        t6 <- floatOut t5
+        t7 <- through check t6
+        return (t7, tPre, t4)
+  in do
+    validateOpts v
+    (t', pre, post) <- pipeline t
+    return (Program a v t', pre, post)
+
+{-
+compileToReadable'
+  :: (Compiling m e uni fun a, b ~ Provenance a)
+  => Program TyName Name uni fun b
+  -> m (Program TyName Name uni fun b) -- , Term TyName Name uni fun b, Term TyName Name uni fun b)
+  -- -> m (Program TyName Name uni fun b, Term TyName Name uni fun b, Term TyName Name uni fun b)
+compileToReadable' (Program a v t) =
+  let pipeline = do
+        x1 <- (pure . original) t
+        logVerbose "  !!! rename"
+        x2 <- PLC.rename x1
+        x3 <- through typeCheckTerm x2
+        logVerbose "  !!! removeDeadBindings"
+        (x5, x4) <- withBuiltinsInfo . flip DeadCode.removeDeadBindings' $ x3
+        logVerbose "  !!! simplifyTerm"
+        x6 <- simplifyTerm x4
+        logVerbose "  !!! floatTerm"
+        x7 <- floatOut x6
+        x8 <- through check x7
+        return (x8, x4, x5)
+  in do
+       validateOpts v
+       (t, pre, post) <- pipeline t
+       return (Program a v t)
+       -- return (Program a v t, pre, post)
+-}
 
 -- | The 2nd half of the PIR compiler pipeline.
 -- Compiles a 'Term' into a PLC Term, by removing/translating step-by-step the PIR's language constructs to PLC.

@@ -515,6 +515,7 @@ library marlowe-internal
     , mtl
     , newtype-generics
     , plutus-benchmark-common
+    , plutus-cert
     , plutus-core:{plutus-core, plutus-core-execlib}  ^>=1.14
     , plutus-ledger-api                               ^>=1.14
     , plutus-tx                                       ^>=1.14
