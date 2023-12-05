@@ -47,7 +47,10 @@ module PlutusIR.Compiler (
     PirTCConfig(..),
     AllowEscape(..),
     toDefaultCompilationCtx,
-    simplifyTerm
+    simplifyTerm,
+    PassId(..),
+    PassResult,
+    CompilationTrace(..)
     ) where
 
 import PlutusIR
@@ -294,3 +297,25 @@ compileProgram =
   >=> compileToReadable
   >=> (<$ logVerbose "!!! compileReadableToPlc")
   >=> compileReadableToPlc
+
+-- | Each pass, including any additional information about
+-- what the pass did
+data PassId
+  = PassRename
+  | PassTypeCheck
+  | PassInline [Name] -- The Names that were unconditionally inlined and thus eliminated
+  | PassDeadCode
+  | PassThunkRec
+  | PassFloatTerm
+  | PassLetNonStrict
+  | PassLetTypes
+  | PassLetRec
+  | PassLetNonRec
+  deriving stock (Show)
+
+type PassResult uni fun a = (PassId, PIRTerm uni fun a)
+
+data CompilationTrace uni fun a =
+  CompilationTrace
+    (PIRTerm uni fun a)
+    [PassResult uni fun a]
