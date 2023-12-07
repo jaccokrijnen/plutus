@@ -167,7 +167,8 @@ availablePasses =
     , Pass "inline"               (onOption coDoSimplifierInline)             (\t -> do
                                                                                   hints <- view (ccOpts . coInlineHints)
                                                                                   binfo <- view ccBuiltinsInfo
-                                                                                  (t', (elim, elimsTy)) <- Inline.inline hints binfo t
+                                                                                  trackElims <- view (ccOpts . coDumpCert)
+                                                                                  (t', (elim, elimsTy)) <- Inline.inline hints binfo trackElims t
                                                                                   dumpCert (PassInline elim elimsTy) t'
                                                                               )
     , Pass "rewrite rules" (onOption coDoSimplifierRewrite) (\ t -> do

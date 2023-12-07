@@ -161,11 +161,12 @@ inline
     . ExternalConstraints tyname name uni fun m
     => InlineHints name ann
     -> BuiltinsInfo uni fun
+    -> Bool
     -> Term tyname name uni fun ann
     -> m (Term tyname name uni fun ann, ([name], [tyname]))
-inline hints binfo t = let
+inline hints binfo trackElims t = let
         inlineInfo :: InlineInfo tyname name uni fun ann
-        inlineInfo = InlineInfo vinfo usgs hints binfo
+        inlineInfo = InlineInfo vinfo usgs hints binfo trackElims
         vinfo = VarInfo.termVarInfo t
         usgs :: Usages.Usages
         usgs = Usages.termUsages t
@@ -342,7 +343,8 @@ processSingleBinding body = \case
         maybeAddSubst body ann s n rhs0 >>= \case
             -- this binding is going to be unconditionally inlined
             Nothing -> do
-              modify' (extendEliminated n)
+              whenM (view iiTrackElims) $
+                modify' (extendEliminated n)
               pure Nothing
             Just rhs -> do
                 -- when we encounter a binding, we add it to
@@ -362,8 +364,11 @@ processSingleBinding body = \case
                 pure $ Just $ TermBind ann s v rhs
     (TypeBind ann v@(TyVarDecl _ n _) rhs) -> do
         maybeRhs' <- maybeAddTySubst n rhs
+
         when (isNothing maybeRhs') $
-          modify' (extendEliminatedTy n)
+          whenM (view iiTrackElims) $
+            modify' (extendEliminatedTy n)
+
         pure $ TypeBind ann v <$> maybeRhs'
     b -> -- Just process all the subterms
         Just <$> forMOf bindingSubterms b processTerm

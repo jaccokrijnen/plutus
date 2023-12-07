@@ -63,6 +63,8 @@ data InlineInfo tyname name uni fun ann = InlineInfo
     -- ^ have we explicitly been told to inline?
     , _iiBuiltinsInfo :: BuiltinsInfo uni fun
     -- ^ the semantics variant.
+    , _iiTrackElims   :: Bool
+    -- ^ keep track of the eliminated variables
     }
 makeLenses ''InlineInfo
 
