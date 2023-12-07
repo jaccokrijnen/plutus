@@ -25,7 +25,7 @@ import PlutusPrelude
 import Control.Lens (forMOf, traverseOf)
 import Control.Monad.Extra
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.State (evalStateT, modify')
+import Control.Monad.State (modify', runStateT)
 
 import Control.Monad.State.Class (gets)
 import PlutusIR.Analysis.Builtins
@@ -162,14 +162,21 @@ inline
     => InlineHints name ann
     -> BuiltinsInfo uni fun
     -> Term tyname name uni fun ann
-    -> m (Term tyname name uni fun ann)
+    -> m (Term tyname name uni fun ann, ([name], [tyname]))
 inline hints binfo t = let
         inlineInfo :: InlineInfo tyname name uni fun ann
         inlineInfo = InlineInfo vinfo usgs hints binfo
         vinfo = VarInfo.termVarInfo t
         usgs :: Usages.Usages
         usgs = Usages.termUsages t
-    in liftQuote $ flip evalStateT mempty $ flip runReaderT inlineInfo $ processTerm t
+    in
+      fmap (second projectEliminated) $
+        liftQuote $ flip runStateT mempty $ flip runReaderT inlineInfo $ processTerm t
+
+-- | Get the eliminated vars and tyvars from the inliner state, used
+-- by the certifier
+projectEliminated :: InlinerState tyname name uni fun a -> ([name], [tyname])
+projectEliminated s = (s ^. eliminated, s ^. eliminatedTy)
 
 {- Note [Removing inlined bindings]
 We *do* remove bindings that we inline *unconditionally*. We *could*
@@ -334,7 +341,9 @@ processSingleBinding body = \case
         -- we want to do unconditional inline if possible
         maybeAddSubst body ann s n rhs0 >>= \case
             -- this binding is going to be unconditionally inlined
-            Nothing -> pure Nothing
+            Nothing -> do
+              modify' (extendEliminated n)
+              pure Nothing
             Just rhs -> do
                 -- when we encounter a binding, we add it to
                 -- the global map `Utils.NonRecInScopeSet`.
@@ -353,6 +362,8 @@ processSingleBinding body = \case
                 pure $ Just $ TermBind ann s v rhs
     (TypeBind ann v@(TyVarDecl _ n _) rhs) -> do
         maybeRhs' <- maybeAddTySubst n rhs
+        when (isNothing maybeRhs') $
+          modify' (extendEliminatedTy n)
         pure $ TypeBind ann v <$> maybeRhs'
     b -> -- Just process all the subterms
         Just <$> forMOf bindingSubterms b processTerm

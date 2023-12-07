@@ -31,6 +31,7 @@ import PlutusIR.Transform.RewriteRules
 import PlutusPrelude
 
 import Control.Monad.Error.Lens (throwing)
+import Control.Monad.State.Class
 import Data.Text qualified as T
 import PlutusIR.Analysis.Builtins
 import Prettyprinter (viaShow)
@@ -211,6 +212,7 @@ type Compiling m e uni fun a =
     , AsTypeErrorExt e uni (Provenance a)
     , AsError e uni fun (Provenance a)
     , MonadError e m
+    , MonadState (CompilationTrace uni fun ()) m
     , MonadQuote m
     , Ord a
     , PLC.Typecheckable uni fun
@@ -233,3 +235,35 @@ data SharedName =
 toProgramName :: SharedName -> Quote PLC.Name
 toProgramName (FixpointCombinator n) = freshName ("fix" <> T.pack (show n))
 toProgramName FixBy                  = freshName "fixBy"
+
+-- | Meta information for the Coq certifier
+data PassMeta
+  = PassRename
+  | PassDeadCode
+  | PassThunkRec
+  | PassFloatIn
+  | PassFloatOut
+  | PassCompileLetNonStrict
+  | PassCompileLetType
+  | PassCompileLetData
+  | PassCompileLetRec
+  | PassCompileLetNonRec
+
+  -- Simplifier
+  | PassInline [PIR.Name] [PIR.TyName] -- The Names that were unconditionally inlined and thus eliminated
+  | PassUnwrapWrap
+  | PassCaseReduce
+  | PassCaseOfCase
+  | PassBeta
+  | PassKnownConstructor
+  | PassStrictifyBindings
+  | PassEvaluateBuiltins
+  | PassRewriteRules
+  deriving stock (Show)
+
+type PassResult uni fun a = (PassMeta, PIR.Term PIR.TyName PIR.Name uni fun a)
+
+data CompilationTrace uni fun a =
+  CompilationTrace
+    (PIR.Term PIR.TyName PIR.Name uni fun a)
+    [PassResult uni fun a]
