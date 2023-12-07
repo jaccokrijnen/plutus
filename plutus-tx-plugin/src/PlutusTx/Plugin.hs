@@ -497,6 +497,7 @@ runCompiler moduleName opts expr = do
                  & set (PIR.ccOpts . PIR.coPedantic) (opts ^. posPedantic)
                  & set (PIR.ccOpts . PIR.coVerbose) (opts ^. posVerbosity == Verbose)
                  & set (PIR.ccOpts . PIR.coDebug) (opts ^. posVerbosity == Debug)
+                 & set (PIR.ccOpts . PIR.coDumpCert) (opts ^. posDumpCert)
                  & set (PIR.ccOpts . PIR.coMaxSimplifierIterations)
                     (opts ^. posMaxSimplifierIterationsPir)
                  & set PIR.ccTypeCheckConfig pirTcConfig

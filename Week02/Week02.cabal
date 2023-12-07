@@ -41,9 +41,10 @@ common common-all
     -Wall -fobject-code -fno-ignore-interface-pragmas
     -fno-omit-interface-pragmas -fno-strictness -fno-spec-constr
     -fno-specialise -fexpose-all-unfoldings -fplugin-opt
-    PlutusTx.Plugin:dump-pir -fplugin-opt PlutusTx.Plugin:verbosity=2
-    -fplugin-opt PlutusTx.Plugin:dump-cert
+    PlutusTx.Plugin:dump-cert
 
+-- -fplugin-opt PlutusTx.Plugin:dump-pir
+-- -fplugin-opt PlutusTx.Plugin:verbosity=2
 common common-all-tests
   import:        common-all
   build-depends:

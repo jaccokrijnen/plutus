@@ -21,6 +21,7 @@ module PlutusIR.Compiler (
     coPedantic,
     coVerbose,
     coDebug,
+    coDumpCert,
     coMaxSimplifierIterations,
     coDoSimplifierUnwrapCancel,
     coDoSimplifierBeta,
@@ -106,6 +107,9 @@ isVerbose = view $ ccOpts . coVerbose
 isDebug :: Compiling m e uni fun a => m Bool
 isDebug = view $ ccOpts . coDebug
 
+isCert :: Compiling m e uni fun a => m Bool
+isCert = view $ ccOpts . coDumpCert
+
 logVerbose :: Compiling m e uni fun a => String -> m ()
 logVerbose = whenM (orM [isVerbose, isDebug]) . traceM
 
@@ -113,7 +117,7 @@ logDebug :: Compiling m e uni fun a => String -> m ()
 logDebug = whenM isDebug . traceM
 
 dumpCert :: Compiling m e uni fun a => PassMeta -> Term TyName Name uni fun (Provenance a) -> m (Term TyName Name uni fun (Provenance a))
-dumpCert pm t = t <$ whenM isDebug (modify addPass)
+dumpCert pm t = t <$ whenM isCert (modify addPass)
   where
     addPass (CompilationTrace t0 ps) = CompilationTrace t0 (ps ++ [(pm, void t)])
 

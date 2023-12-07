@@ -80,6 +80,7 @@ data CompilationOpts a = CompilationOpts {
     , _coPedantic                      :: Bool
     , _coVerbose                       :: Bool
     , _coDebug                         :: Bool
+    , _coDumpCert                      :: Bool
     , _coDatatypes                     :: DatatypeCompilationOpts
     -- Simplifier passes
     , _coMaxSimplifierIterations       :: Int
@@ -109,6 +110,7 @@ defaultCompilationOpts = CompilationOpts
   , _coPedantic = False
   , _coVerbose = False
   , _coDebug = False
+  , _coDumpCert = False
   , _coDatatypes = defaultDatatypeCompilationOpts
   , _coMaxSimplifierIterations = 12
   , _coDoSimplifierUnwrapCancel = True
