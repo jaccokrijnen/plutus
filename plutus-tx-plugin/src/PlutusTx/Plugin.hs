@@ -643,4 +643,3 @@ makePrimitiveNameInfo names = do
         thing <- lift . lift $ GHC.lookupThing ghcName
         pure (name, thing)
     pure $ Map.fromList infos
-
