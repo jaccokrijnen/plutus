@@ -2,11 +2,15 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UndecidableInstances  #-}
+
+-- | Pretty printing of PIR types suitable for parsing in the Coq certifier.
+-- This basically implements a Show-like representation without record syntax so it
+-- easy to parse on the Coq side. It also does not print annotations which are
+-- not needed.
 module PlutusIR.Certifier.ToCoq where
 
 import PlutusCore qualified as PLC
 import PlutusIR qualified as PIR
--- import PlutusIR.Compiler qualified as PIR
 import PlutusIR.Compiler.Types qualified as PIR
 
 import Data.ByteString qualified as BS
@@ -126,7 +130,7 @@ instance ToCoq (PLC.TyName) where toCoq (PLC.TyName name) = apps "TyName" [toCoq
 instance ToCoq a => ToCoq (NonEmpty a) where
   toCoq (x :| xs) = apps "cons" [toCoq x, toCoq xs]
 
-instance {-# OVERLAPPABLE #-} ToCoq a => ToCoq [a] where
+instance ToCoq a => ToCoq [a] where
   toCoq []     = "nil"
   toCoq (x:xs) = apps "cons" [toCoq x, toCoq xs]
 

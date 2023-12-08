@@ -64,7 +64,7 @@ data InlineInfo tyname name uni fun ann = InlineInfo
     , _iiBuiltinsInfo :: BuiltinsInfo uni fun
     -- ^ the semantics variant.
     , _iiTrackElims   :: Bool
-    -- ^ keep track of the eliminated variables
+    -- ^ keep track of the eliminated variables, to be dumped for the certifier
     }
 makeLenses ''InlineInfo
 
