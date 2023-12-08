@@ -243,6 +243,8 @@ data PassMeta
   = PassRename
   | PassDeadCode
   | PassThunkRec
+  | PassRecSplit
+  | PassLetMerge
   | PassFloatIn
   | PassFloatOut
   | PassCompileLetNonStrict
