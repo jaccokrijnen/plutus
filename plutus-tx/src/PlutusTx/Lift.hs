@@ -29,6 +29,7 @@ import PlutusIR qualified as PIR
 import PlutusIR.Analysis.Builtins as PIR
 import PlutusIR.Compiler
 import PlutusIR.Compiler.Definitions
+import PlutusIR.Compiler.Types
 import PlutusIR.Error qualified as PIR
 import PlutusIR.MkPir qualified as PIR
 import PlutusIR.Transform.RewriteRules as PIR

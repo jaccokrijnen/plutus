@@ -65,6 +65,7 @@ import PlutusIR qualified as PIR
 import PlutusIR.Certifier.ToCoq qualified as PIR
 import PlutusIR.Compiler qualified as PIR
 import PlutusIR.Compiler.Definitions qualified as PIR
+import PlutusIR.Compiler.Types qualified as PIR
 import PlutusTx.Options
 
 import Language.Haskell.TH.Syntax as TH hiding (lift)

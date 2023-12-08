@@ -49,9 +49,6 @@ module PlutusIR.Compiler (
     AllowEscape(..),
     toDefaultCompilationCtx,
     simplifyTerm,
-    PassMeta(..),
-    PassResult,
-    CompilationTrace(..)
     ) where
 
 import PlutusIR

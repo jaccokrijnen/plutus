@@ -6,7 +6,8 @@ module PlutusIR.Certifier.ToCoq where
 
 import PlutusCore qualified as PLC
 import PlutusIR qualified as PIR
-import PlutusIR.Compiler qualified as PIR
+-- import PlutusIR.Compiler qualified as PIR
+import PlutusIR.Compiler.Types qualified as PIR
 
 import Data.ByteString qualified as BS
 import Data.List (intercalate)
