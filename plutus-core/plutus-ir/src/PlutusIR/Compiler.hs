@@ -113,8 +113,8 @@ logVerbose = whenM (orM [isVerbose, isDebug]) . traceM
 logDebug :: Compiling m e uni fun a => String -> m ()
 logDebug = whenM isDebug . traceM
 
-dumpCert :: Compiling m e uni fun a => PassMeta -> Term TyName Name uni fun (Provenance a) -> m (Term TyName Name uni fun (Provenance a))
-dumpCert pm t = t <$ whenM isCert (modify addPass)
+updateCertTrace :: Compiling m e uni fun a => PassMeta -> Term TyName Name uni fun (Provenance a) -> m (Term TyName Name uni fun (Provenance a))
+updateCertTrace pm t = t <$ whenM isCert (modify addPass)
   where
     addPass (CompilationTrace t0 ps) = CompilationTrace t0 (ps ++ [(pm, void t)])
 
@@ -131,47 +131,47 @@ availablePasses :: [Pass uni fun]
 availablePasses =
     [ Pass "unwrap cancel"        (onOption coDoSimplifierUnwrapCancel)       (\t -> do
                                                                                   let t' = Unwrap.unwrapCancel t
-                                                                                  dumpCert PassUnwrapWrap t')
+                                                                                  updateCertTrace PassUnwrapWrap t')
     , Pass "case reduce"          (onOption coDoSimplifierCaseReduce)         (\t -> do
                                                                                   let t' = CaseReduce.caseReduce t
-                                                                                  dumpCert PassCaseReduce t')
+                                                                                  updateCertTrace PassCaseReduce t')
     , Pass "case of case"         (onOption coDoSimplifierCaseOfCase)         (\t -> do
                                                                                   binfo <- view ccBuiltinsInfo
                                                                                   conservative <- view (ccOpts . coCaseOfCaseConservative)
                                                                                   t' <- CaseOfCase.caseOfCase binfo conservative noProvenance t
-                                                                                  dumpCert PassCaseOfCase t'
+                                                                                  updateCertTrace PassCaseOfCase t'
                                                                               )
     , Pass "known constructor"    (onOption coDoSimplifierKnownCon)           (\t -> do
                                                                                   t' <- KnownCon.knownCon t
-                                                                                  dumpCert PassKnownConstructor t'
+                                                                                  updateCertTrace PassKnownConstructor t'
                                                                               )
     , Pass "beta"                 (onOption coDoSimplifierBeta)               (\t -> do
                                                                                   let t' = Beta.beta t
-                                                                                  dumpCert PassBeta t'
+                                                                                  updateCertTrace PassBeta t'
                                                                               )
     , Pass "strictify bindings"   (onOption coDoSimplifierStrictifyBindings)  (\t -> do
                                                                                   binfo <- view ccBuiltinsInfo
                                                                                   let t' = StrictifyBindings.strictifyBindings binfo t
-                                                                                  dumpCert PassStrictifyBindings t'
+                                                                                  updateCertTrace PassStrictifyBindings t'
                                                                               )
     , Pass "evaluate builtins"    (onOption coDoSimplifierEvaluateBuiltins)   (\t -> do
                                                                                   binfo <- view ccBuiltinsInfo
                                                                                   costModel <- view ccBuiltinCostModel
                                                                                   preserveLogging <- view (ccOpts . coPreserveLogging)
                                                                                   let t' = EvaluateBuiltins.evaluateBuiltins preserveLogging binfo costModel t
-                                                                                  dumpCert PassEvaluateBuiltins t'
+                                                                                  updateCertTrace PassEvaluateBuiltins t'
                                                                               )
     , Pass "inline"               (onOption coDoSimplifierInline)             (\t -> do
                                                                                   hints <- view (ccOpts . coInlineHints)
                                                                                   binfo <- view ccBuiltinsInfo
                                                                                   trackElims <- view (ccOpts . coDumpCert)
                                                                                   (t', (elim, elimsTy)) <- Inline.inline hints binfo trackElims t
-                                                                                  dumpCert (PassInline elim elimsTy) t'
+                                                                                  updateCertTrace (PassInline elim elimsTy) t'
                                                                               )
     , Pass "rewrite rules" (onOption coDoSimplifierRewrite) (\ t -> do
                                                                     rules <- view ccRewriteRules
                                                                     t' <- RewriteRules.rewriteWith rules t
-                                                                    dumpCert PassRewriteRules t'
+                                                                    updateCertTrace PassRewriteRules t'
                                                                     )
     ]
 
@@ -257,16 +257,16 @@ compileToReadable (Program a v t) =
         -- We need globally unique names for typechecking, floating, and compiling non-strict bindings
         (<$ logVerbose "  !!! rename")
         >=> PLC.rename
-        >=> dumpCert PassRename
+        >=> updateCertTrace PassRename
         >=> through typeCheckTerm
         >=> (<$ logVerbose "  !!! removeDeadBindings")
         >=> (withBuiltinsInfo . flip DeadCode.removeDeadBindings)
-        >=> dumpCert PassDeadCode
+        >=> updateCertTrace PassDeadCode
         >=> (<$ logVerbose "  !!! simplifyTerm")
         >=> simplifyTerm
         >=> (<$ logVerbose "  !!! floatOut")
         >=> floatOut
-        >=> dumpCert PassFloatOut
+        >=> updateCertTrace PassFloatOut
         >=> through check
   in validateOpts v >> Program a v <$> pipeline t
 
@@ -278,49 +278,49 @@ compileReadableToPlc (Program a v t) =
   let pipeline =
         (<$ logVerbose "  !!! floatIn")
         >=> floatIn
-        >=> dumpCert PassFloatIn
+        >=> updateCertTrace PassFloatIn
         >=> through check
         >=> (<$ logVerbose "  !!! compileNonStrictBindings")
         >=> NonStrict.compileNonStrictBindings False
-        >=> dumpCert PassCompileLetNonStrict
+        >=> updateCertTrace PassCompileLetNonStrict
         >=> through check
         >=> (<$ logVerbose "  !!! thunkRecursions")
         >=> (withBuiltinsInfo . fmap pure . flip ThunkRec.thunkRecursions)
-        >=> dumpCert PassThunkRec
+        >=> updateCertTrace PassThunkRec
         -- Thunking recursions breaks global uniqueness
         >=> PLC.rename
-        >=> dumpCert PassRename
+        >=> updateCertTrace PassRename
         >=> through check
         -- Process only the non-strict bindings created by 'thunkRecursions' with unit delay/forces
         -- See Note [Using unit versus force/delay]
         >=> (<$ logVerbose "  !!! compileNonStrictBindings")
         >=> NonStrict.compileNonStrictBindings True
-        >=> dumpCert PassCompileLetNonStrict
+        >=> updateCertTrace PassCompileLetNonStrict
         >=> through check
         >=> (<$ logVerbose "  !!! compileLets DataTypes")
         >=> Let.compileLets Let.DataTypes
-        >=> dumpCert PassCompileLetData
+        >=> updateCertTrace PassCompileLetData
         >=> through check
         >=> (<$ logVerbose "  !!! compileLets RecTerms")
         >=> Let.compileLets Let.RecTerms
-        >=> dumpCert PassCompileLetRec
+        >=> updateCertTrace PassCompileLetRec
         >=> through check
         -- We introduce some non-recursive let bindings while eliminating recursive let-bindings, so we
         -- can eliminate any of them which are unused here.
         >=> (<$ logVerbose "  !!! removeDeadBindings")
         >=> (withBuiltinsInfo . flip DeadCode.removeDeadBindings)
-        >=> dumpCert PassDeadCode
+        >=> updateCertTrace PassDeadCode
         >=> through check
         >=> (<$ logVerbose "  !!! simplifyTerm")
         >=> simplifyTerm
         >=> through check
         >=> (<$ logVerbose "  !!! compileLets Types")
         >=> Let.compileLets Let.Types
-        >=> dumpCert PassCompileLetType
+        >=> updateCertTrace PassCompileLetType
         >=> through check
         >=> (<$ logVerbose "  !!! compileLets NonRecTerms")
         >=> Let.compileLets Let.NonRecTerms
-        >=> dumpCert PassCompileLetNonRec
+        >=> updateCertTrace PassCompileLetNonRec
         >=> through check
         >=> (<$ logVerbose "  !!! lowerTerm")
         >=> lowerTerm
