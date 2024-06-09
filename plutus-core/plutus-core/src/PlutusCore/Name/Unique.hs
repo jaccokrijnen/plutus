@@ -124,7 +124,7 @@ instance Hashable Name where
 
 -- | A unique identifier
 newtype Unique = Unique {unUnique :: Int}
-  deriving stock (Eq, Show, Ord, Lift)
+  deriving stock (Eq, Show, Ord, Lift, Generic)
   deriving newtype (Enum, NFData, Pretty, Hashable)
 
 -- | The unique of a type-level name.

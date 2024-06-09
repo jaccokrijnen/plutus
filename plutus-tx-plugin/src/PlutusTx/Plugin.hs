@@ -1,14 +1,18 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskellQuotes      #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
 
 -- Due to CPP
@@ -90,8 +94,12 @@ import PlutusIR.Compiler.Types qualified as PIR
 import PlutusIR.Transform.RewriteRules
 import PlutusIR.Transform.RewriteRules.RemoveTrace (rewriteRuleRemoveTrace)
 import Prettyprinter qualified as PP
-import System.IO (openBinaryTempFile)
+import System.IO (hPutStr, openBinaryTempFile)
 import System.IO.Unsafe (unsafePerformIO)
+
+import Data.Text (Text)
+import GHC.Word
+import Text.SimpleShow
 
 data PluginCtx = PluginCtx
     { pcOpts            :: PluginOptions
@@ -545,13 +553,15 @@ runCompiler moduleName opts expr = do
     -- GHC.Core -> Pir translation.
     pirT <- original <$> (PIR.runDefT annMayInline $ compileExprWithDefs expr)
     let pirP = PIR.Program noProvenance plcVersion pirT
-    when (opts ^. posDumpPir) . liftIO $
+    when (opts ^. posDumpPir) . liftIO $ do
         dumpFlat (void pirP) "initial PIR program" (moduleName ++ "_initial.pir-flat")
+        dumpSimple (void pirP) "initial PIR program" (moduleName ++ "_initial.simple")
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
     spirP <- flip runReaderT pirCtx $ PIR.compileToReadable pirP
-    when (opts ^. posDumpPir) . liftIO $
+    when (opts ^. posDumpPir) . liftIO $ do
         dumpFlat (void spirP) "simplified PIR program" (moduleName ++ "_simplified.pir-flat")
+        dumpSimple (void spirP) "simplified PIR program" (moduleName ++ "_simplified.simple")
 
     -- (Simplified) Pir -> Plc translation.
     plcP <- flip runReaderT pirCtx $ PIR.compileReadableToPlc spirP
@@ -581,6 +591,12 @@ runCompiler moduleName opts expr = do
         -- also wrap the PLC Error annotations into Original provenances, to match our expected
         -- 'CompileError'
         liftEither $ first (view (re PIR._PLCError) . fmap PIR.Original) plcTcError
+
+      dumpSimple :: ShowPrefix t => t -> String -> String -> IO ()
+      dumpSimple t desc fileName = do
+        (tPath, tHandle) <- openBinaryTempFile "." fileName
+        putStrLn $ "!!! dumping (simple)" ++ desc ++ " to " ++ show tPath
+        hPutStr tHandle $ gshow t
 
       dumpFlat :: Flat t => t -> String -> String -> IO ()
       dumpFlat t desc fileName = do
@@ -656,3 +672,39 @@ makeRewriteRules options =
     [ mwhen (options ^. posRemoveTrace) rewriteRuleRemoveTrace
     , defaultUniRewriteRules
     ]
+
+deriving instance ShowPrefix a => ShowPrefix (NonEmpty a)
+deriving instance ShowPrefix PlutusTx.Compiler.Types.Inline
+-- deriving instance ShowPrefix Ann
+-- deriving instance ShowPrefix SrcSpans
+deriving instance ShowPrefix ()
+instance ShowPrefix Natural where
+  gshow = show
+
+instance ShowPrefix (GHC.Word.Word64) where
+  gshow = show
+
+instance ShowPrefix (PLC.SomeTypeIn DefaultUni) where
+  gshow x = "(" ++ show x ++ ")"
+instance ShowPrefix (PLC.Some (PLC.ValueOf DefaultUni)) where
+  gshow x = "(" ++ show x ++ ")"
+
+instance ShowPrefix Text where
+  gshow = show
+deriving instance ShowPrefix UPLC.Version
+deriving instance ShowPrefix a =>  ShowPrefix (PIR.Kind a)
+deriving instance ShowPrefix (UPLC.Unique)
+deriving instance ShowPrefix PIR.Name
+deriving instance ShowPrefix DefaultFun
+deriving instance ShowPrefix PIR.TyName
+deriving instance ShowPrefix PIR.Strictness
+deriving instance ShowPrefix PIR.Recursivity
+deriving instance ShowPrefix a => ShowPrefix (PIR.VarDecl PIR.TyName PIR.Name DefaultUni a)
+deriving instance ShowPrefix a => ShowPrefix (PIR.TyVarDecl PIR.TyName a)
+deriving instance ShowPrefix a => ShowPrefix (PIR.Type PIR.TyName DefaultUni a)
+deriving instance ShowPrefix a => ShowPrefix (PIR.Term PIR.TyName PIR.Name DefaultUni DefaultFun a)
+deriving instance ShowPrefix a =>
+  ShowPrefix (PIR.Binding PIR.TyName PIR.Name DefaultUni DefaultFun a)
+deriving instance ShowPrefix a => ShowPrefix (PIR.Datatype PIR.TyName PIR.Name DefaultUni a)
+deriving instance ShowPrefix a =>
+  ShowPrefix (PIR.Program PIR.TyName PIR.Name DefaultUni DefaultFun a)
