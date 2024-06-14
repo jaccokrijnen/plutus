@@ -555,7 +555,7 @@ runCompiler moduleName opts expr = do
     let pirP = PIR.Program noProvenance plcVersion pirT
     when (opts ^. posDumpPir) . liftIO $ do
         dumpFlat (void pirP) "initial PIR program" (moduleName ++ "_initial.pir-flat")
-        dumpSimple (void pirP) "initial PIR program" (moduleName ++ "_initial.simple")
+        -- dumpSimple (void pirP) "initial PIR program" (moduleName ++ "_initial.simple")
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
     spirP <- flip runReaderT pirCtx $ PIR.compileToReadable pirP
@@ -592,11 +592,11 @@ runCompiler moduleName opts expr = do
         -- 'CompileError'
         liftEither $ first (view (re PIR._PLCError) . fmap PIR.Original) plcTcError
 
-      dumpSimple :: ShowPrefix t => t -> String -> String -> IO ()
+      dumpSimple :: SimpleShow t => t -> String -> String -> IO ()
       dumpSimple t desc fileName = do
         (tPath, tHandle) <- openBinaryTempFile "." fileName
         putStrLn $ "!!! dumping (simple)" ++ desc ++ " to " ++ show tPath
-        hPutStr tHandle $ gshow t
+        hPutStr tHandle $ simpleShow t
 
       dumpFlat :: Flat t => t -> String -> String -> IO ()
       dumpFlat t desc fileName = do
@@ -672,39 +672,3 @@ makeRewriteRules options =
     [ mwhen (options ^. posRemoveTrace) rewriteRuleRemoveTrace
     , defaultUniRewriteRules
     ]
-
-deriving instance ShowPrefix a => ShowPrefix (NonEmpty a)
-deriving instance ShowPrefix PlutusTx.Compiler.Types.Inline
--- deriving instance ShowPrefix Ann
--- deriving instance ShowPrefix SrcSpans
-deriving instance ShowPrefix ()
-instance ShowPrefix Natural where
-  gshow = show
-
-instance ShowPrefix (GHC.Word.Word64) where
-  gshow = show
-
-instance ShowPrefix (PLC.SomeTypeIn DefaultUni) where
-  gshow x = "(" ++ show x ++ ")"
-instance ShowPrefix (PLC.Some (PLC.ValueOf DefaultUni)) where
-  gshow x = "(" ++ show x ++ ")"
-
-instance ShowPrefix Text where
-  gshow = show
-deriving instance ShowPrefix UPLC.Version
-deriving instance ShowPrefix a =>  ShowPrefix (PIR.Kind a)
-deriving instance ShowPrefix (UPLC.Unique)
-deriving instance ShowPrefix PIR.Name
-deriving instance ShowPrefix DefaultFun
-deriving instance ShowPrefix PIR.TyName
-deriving instance ShowPrefix PIR.Strictness
-deriving instance ShowPrefix PIR.Recursivity
-deriving instance ShowPrefix a => ShowPrefix (PIR.VarDecl PIR.TyName PIR.Name DefaultUni a)
-deriving instance ShowPrefix a => ShowPrefix (PIR.TyVarDecl PIR.TyName a)
-deriving instance ShowPrefix a => ShowPrefix (PIR.Type PIR.TyName DefaultUni a)
-deriving instance ShowPrefix a => ShowPrefix (PIR.Term PIR.TyName PIR.Name DefaultUni DefaultFun a)
-deriving instance ShowPrefix a =>
-  ShowPrefix (PIR.Binding PIR.TyName PIR.Name DefaultUni DefaultFun a)
-deriving instance ShowPrefix a => ShowPrefix (PIR.Datatype PIR.TyName PIR.Name DefaultUni a)
-deriving instance ShowPrefix a =>
-  ShowPrefix (PIR.Program PIR.TyName PIR.Name DefaultUni DefaultFun a)

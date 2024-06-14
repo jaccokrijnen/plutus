@@ -41,7 +41,7 @@ data Ann = Ann
     , annSrcSpans :: SrcSpans
     }
     deriving stock (Eq, Ord, Generic, Show)
-    deriving anyclass (Hashable)
+    deriving anyclass (Hashable, SimpleShow)
 
 data Inline
     = -- | When calling @PlutusIR.Compiler.Definitions.defineTerm@ to add a new term definition,
@@ -87,7 +87,7 @@ data SrcSpan = SrcSpan
     -- is the line break).
     }
     deriving stock (Eq, Ord, Generic)
-    deriving anyclass (Flat, Hashable, NFData)
+    deriving anyclass (Flat, Hashable, NFData, SimpleShow)
 
 instance Show SrcSpan where
     showsPrec _ s =
@@ -107,7 +107,7 @@ instance Pretty SrcSpan where
 newtype SrcSpans = SrcSpans {unSrcSpans :: Set SrcSpan}
     deriving newtype (Eq, Ord, Hashable, Semigroup, Monoid, MonoFoldable, NFData)
     deriving stock (Generic)
-    deriving anyclass (Flat)
+    deriving anyclass (Flat, SimpleShow)
 
 type instance Element SrcSpans = SrcSpan
 

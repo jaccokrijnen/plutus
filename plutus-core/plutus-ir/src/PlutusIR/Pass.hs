@@ -156,7 +156,7 @@ instance Monoid (Pass m tyname name uni fun a) where
 
 hoistPass :: (forall v . m v -> n v) -> Pass m tyname name uni fun a -> Pass n tyname name uni fun a
 hoistPass f p = case p of
-  Pass pi mainPass pre post -> Pass pi (f . mainPass) pre post
+  Pass pt mainPass pre post -> Pass pt (f . mainPass) pre post
   CompoundPass p1 p2        -> CompoundPass (hoistPass f p1) (hoistPass f p2)
   NamedPass n pass          -> NamedPass n (hoistPass f pass)
   NoOpPass                  -> NoOpPass
@@ -171,19 +171,20 @@ runPass
   -> Pass m tyname name uni fun a
   -> Term tyname name uni fun a
   -> ExceptT (Error uni fun a) m (Term tyname name uni fun a)
-runPass logger dumper checkConditions p t = runPass' p t
+runPass logger dumper checkConditions = runPass'
   where
     -- runPass' ::
     --    Pass m tyname name uni fun a
     --   -> Term tyname name uni fun a
     --   -> ExceptT (Error uni fun a) m (Term tyname name uni fun a)
-    runPass' (Pass pi mainPass pre post) t = do
+    runPass' (Pass pt mainPass pre post) t = do
       when checkConditions $ do
         lift $ logger "checking preconditions"
         for_ pre $ \c -> checkCondition c t
       t' <- lift $ mainPass t
       lift $ do
-        dumper (simpleShow pi)
+        logger "dumping for cert"
+        dumper (simpleShow pt)
         dumper (simpleShow t)
         dumper (simpleShow t')
       when checkConditions $ do
@@ -207,12 +208,14 @@ runPass logger dumper checkConditions p t = runPass' p t
 -- | A simple, non-monadic pass that should typecheck.
 simplePass
   :: (PLC.Typecheckable uni fun, PLC.GEq uni, Applicative m)
-  => PassId
+  => String
+  -> PassId
   -> TC.PirTCConfig uni fun
   -> (Term TyName Name uni fun a -> Term TyName Name uni fun a)
   -> Pass m TyName Name uni fun a
-simplePass pi tcConfig f =
-    Pass pi (pure . f) [Typechecks tcConfig] [ConstCondition (Typechecks tcConfig)]
+simplePass name pt tcConfig f =
+  NamedPass name $
+    Pass pt (pure . f) [Typechecks tcConfig] [ConstCondition (Typechecks tcConfig)]
 
 -- | A pass that does renaming.
 renamePass

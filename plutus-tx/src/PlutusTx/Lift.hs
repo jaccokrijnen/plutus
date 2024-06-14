@@ -2,6 +2,7 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 module PlutusTx.Lift (
@@ -53,6 +54,7 @@ import Data.Bifunctor
 import Data.Default.Class
 import Data.Hashable
 import Data.Proxy
+import Text.SimpleShow
 
 -- We do not use qualified import because the whole module contains off-chain code
 import Prelude as Haskell
@@ -71,6 +73,9 @@ safeLift
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => PLC.Version -> a -> m (PIR.Term PLC.TyName PLC.Name uni fun (), UPLC.Term UPLC.NamedDeBruijn uni fun ())
 safeLift v x = do
@@ -104,6 +109,9 @@ safeLiftProgram
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => PLC.Version -> a -> m (PIR.Program PLC.TyName PLC.Name uni fun (), UPLC.Program UPLC.NamedDeBruijn uni fun ())
 safeLiftProgram v x = bimap (PIR.Program () v) (UPLC.Program () v) <$> safeLift v x
@@ -120,6 +128,9 @@ safeLiftCode
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => PLC.Version -> a -> m (CompiledCodeIn uni fun a)
 safeLiftCode v =
@@ -145,6 +156,9 @@ lift
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => PLC.Version -> a -> (PIR.Term PLC.TyName PLC.Name uni fun (), UPLC.Term UPLC.NamedDeBruijn uni fun ())
 lift v a = unsafely $ safeLift v a
@@ -156,6 +170,9 @@ liftProgram
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => PLC.Version -> a -> (PIR.Program PLC.TyName PLC.Name uni fun (), UPLC.Program UPLC.NamedDeBruijn uni fun ())
 liftProgram v x = unsafely $ safeLiftProgram v x
@@ -173,6 +190,9 @@ liftCode
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => PLC.Version -> a -> CompiledCodeIn uni fun a
 liftCode v x = unsafely $ safeLiftCode v x
@@ -184,6 +204,9 @@ liftCodeDef
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => a -> CompiledCodeIn uni fun a
 liftCodeDef = liftCode PLC.latestVersion
@@ -214,6 +237,10 @@ typeCheckAgainst
        , Default (PLC.CostingPart uni fun)
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
+
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => Proxy a
     -> PLC.Program PLC.TyName PLC.Name uni fun ()
@@ -259,6 +286,10 @@ typeCode
        , Default (PIR.BuiltinsInfo uni fun)
        , Default (PIR.RewriteRules uni fun)
        , Hashable fun
+
+       , PLC.Everywhere uni SimpleShow
+       , forall t. SimpleShow (uni t)
+       , SimpleShow fun
        )
     => Proxy a
     -> PLC.Program PLC.TyName PLC.Name uni fun ()

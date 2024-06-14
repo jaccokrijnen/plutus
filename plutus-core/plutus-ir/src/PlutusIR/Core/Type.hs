@@ -250,10 +250,10 @@ instance Show (PLC.DefaultUni a) => SimpleShow (PLC.DefaultUni a) where
   simpleShow x = parens True (show x)
 
 instance (forall a. SimpleShow (uni a)) => SimpleShow (PLC.SomeTypeIn uni) where
-  simpleShow x = parens True (simpleShow x)
+  simpleShow (SomeTypeIn x) = parens True (simpleShow x)
 
 instance SimpleShow (PLC.Some (PLC.ValueOf PLC.DefaultUni)) where
-  simpleShow x = parens True (show x)
+  simpleShow (Some x) = parens True (simpleShow x)
 
 instance
   (forall t. SimpleShow (uni t), PLC.Closed uni, PLC.Everywhere uni SimpleShow) =>
