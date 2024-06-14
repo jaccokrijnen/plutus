@@ -27,6 +27,7 @@ import Flat (Flat (..))
 import GHC.Generics
 import Prettyprinter
 import Text.Megaparsec.Pos as Megaparsec
+import Text.SimpleShow
 
 newtype InlineHints name a = InlineHints { shouldInline :: a -> name -> Bool }
     deriving (Semigroup, Monoid) via (a -> name -> Any)
@@ -55,6 +56,7 @@ data Inline
     | MayInline
     deriving stock (Eq, Ord, Generic, Show)
     deriving anyclass (Hashable)
+    deriving anyclass (SimpleShow)
 
 instance Pretty Ann where
     pretty = viaShow

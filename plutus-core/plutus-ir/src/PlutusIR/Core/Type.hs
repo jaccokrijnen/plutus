@@ -3,9 +3,12 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module PlutusIR.Core.Type (
     TyName (..),
@@ -36,6 +39,7 @@ import PlutusCore (Kind, Name, TyName, Type (..), Version (..))
 import PlutusCore qualified as PLC
 import PlutusCore.Builtin (HasConstant (..), throwNotAConstant)
 import PlutusCore.Core (UniOf)
+import PlutusCore.Data (Data)
 import PlutusCore.Evaluation.Machine.ExMemoryUsage
 import PlutusCore.Flat ()
 import PlutusCore.MkPlc (Def (..), TermLike (..), TyVarDecl (..), VarDecl (..))
@@ -47,10 +51,15 @@ import Universe
 import Control.Lens.TH
 import Control.Monad.Except
 import Data.Hashable
+import Data.Proxy
 import Data.Text qualified as T
 import Data.Word
 import PlutusCore.Error (ApplyProgramError (MkApplyProgramError))
+import Text.SimpleShow
 
+import PlutusCore.Crypto.BLS12_381.G1 qualified as BLS12_381.G1
+import PlutusCore.Crypto.BLS12_381.G2 qualified as BLS12_381.G2
+import PlutusCore.Crypto.BLS12_381.Pairing qualified as BLS12_381.Pairing
 -- Datatypes
 
 data Datatype tyname name uni a = Datatype a (TyVarDecl tyname a) [TyVarDecl tyname a] name [VarDecl tyname name uni a]
@@ -222,3 +231,58 @@ bindingAnn = \case
     TermBind a _ _ _ -> a
     TypeBind a _ _   -> a
     DatatypeBind a _ -> a
+
+deriving anyclass instance SimpleShow a => SimpleShow (NonEmpty a)
+-- deriving instance SimpleShow Ann
+-- deriving instance SimpleShow SrcSpans
+deriving anyclass instance SimpleShow ()
+instance SimpleShow Natural where
+  simpleShow = show
+
+
+
+
+instance (forall a. SimpleShow (f a)) => SimpleShow (PLC.Some f) where
+  simpleShow (PLC.Some x) = parens True ("Some " ++  (simpleShow x))
+
+
+instance Show (PLC.DefaultUni a) => SimpleShow (PLC.DefaultUni a) where
+  simpleShow x = parens True (show x)
+
+instance (forall a. SimpleShow (uni a)) => SimpleShow (PLC.SomeTypeIn uni) where
+  simpleShow x = parens True (simpleShow x)
+
+instance SimpleShow (PLC.Some (PLC.ValueOf PLC.DefaultUni)) where
+  simpleShow x = parens True (show x)
+
+instance
+  (forall t. SimpleShow (uni t), PLC.Closed uni, PLC.Everywhere uni SimpleShow) =>
+  SimpleShow (PLC.ValueOf uni a) where
+  simpleShow (PLC.ValueOf uni x) = PLC.bring (Proxy @SimpleShow) uni $ parens True ("ValueOf " ++ simpleShow uni ++ simpleShow x)
+
+instance SimpleShow BLS12_381.Pairing.MlResult where simpleShow = show
+instance SimpleShow BLS12_381.G2.Element where simpleShow = show
+instance SimpleShow BLS12_381.G1.Element where simpleShow = show
+
+-- TODO: move orphan instances
+deriving anyclass instance SimpleShow Data
+deriving anyclass instance SimpleShow PLC.Version
+deriving anyclass instance SimpleShow a => SimpleShow (Kind a)
+deriving anyclass instance SimpleShow (PLC.Unique)
+deriving anyclass instance SimpleShow Name
+deriving anyclass instance SimpleShow PLC.DefaultFun
+deriving anyclass instance SimpleShow TyName
+deriving anyclass instance SimpleShow Strictness
+deriving anyclass instance SimpleShow Recursivity
+deriving anyclass instance (SimpleShow tyname, SimpleShow name, forall t. SimpleShow (uni t), Everywhere uni SimpleShow, SimpleShow a) =>
+  SimpleShow (VarDecl tyname name uni a)
+deriving anyclass instance (SimpleShow tyname, SimpleShow a) => SimpleShow (TyVarDecl tyname a)
+deriving anyclass instance (SimpleShow tyname, forall t. SimpleShow (uni t), Everywhere uni SimpleShow, SimpleShow a) => SimpleShow (Type tyname uni a)
+deriving anyclass instance (SimpleShow tyname, SimpleShow name, forall b. SimpleShow (uni b), Closed uni, Everywhere uni SimpleShow, SimpleShow fun, SimpleShow a) =>
+  SimpleShow (Term tyname name uni fun a)
+deriving anyclass instance (SimpleShow tyname, SimpleShow name, forall b. SimpleShow (uni b), Closed uni, Everywhere uni SimpleShow, SimpleShow fun, SimpleShow a) =>
+  SimpleShow (Binding tyname name uni fun a)
+deriving anyclass instance (SimpleShow tyname, SimpleShow name, forall t. SimpleShow (uni t), Closed uni, Everywhere uni SimpleShow, SimpleShow a) =>
+  SimpleShow (Datatype tyname name uni a)
+deriving anyclass instance SimpleShow a =>
+  SimpleShow (Program TyName Name PLC.DefaultUni PLC.DefaultFun a)

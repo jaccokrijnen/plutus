@@ -72,7 +72,6 @@ library
     PlutusTx.Compiler.Utils
     PlutusTx.PIRTypes
     PlutusTx.PLCTypes
-    Text.SimpleShow
 
   build-depends:
     , array

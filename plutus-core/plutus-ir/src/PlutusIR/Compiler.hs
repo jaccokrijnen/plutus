@@ -1,9 +1,10 @@
 -- editorconfig-checker-disable-file
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 module PlutusIR.Compiler (
     compileProgram,
     compileToReadable,
@@ -86,6 +87,7 @@ import PlutusIR.Transform.StrictifyBindings qualified as StrictifyBindings
 import PlutusIR.Transform.ThunkRecursions qualified as ThunkRec
 import PlutusIR.Transform.Unwrap qualified as Unwrap
 import PlutusPrelude
+import Text.SimpleShow
 
 isVerbose :: Compiling m e uni fun a => m Bool
 isVerbose = view $ ccOpts . coVerbose
@@ -93,17 +95,25 @@ isVerbose = view $ ccOpts . coVerbose
 isDebug :: Compiling m e uni fun a => m Bool
 isDebug = view $ ccOpts . coDebug
 
+isCert :: Compiling m e uni fun a => m Bool
+isCert = view $ ccOpts . coDumpCert
+
 logVerbose :: Compiling m e uni fun a => String -> m ()
 logVerbose = whenM (orM [isVerbose, isDebug]) . traceM
 
 logDebug :: Compiling m e uni fun a => String -> m ()
 logDebug = whenM isDebug . traceM
 
-runCompilerPass :: (Compiling m e uni fun a, b ~ Provenance a) => m (P.Pass m tyname name uni fun b) -> Term tyname name uni fun b -> m (Term tyname name uni fun b)
+logCert :: Compiling m e uni fun a => String -> m ()
+logCert = whenM isCert . traceM
+
+
+runCompilerPass :: (Compiling m e uni fun a, b ~ Provenance a, PLC.Closed uni, PLC.Everywhere uni ShowPrefix, forall t. ShowPrefix (uni t), ShowPrefix tyname, ShowPrefix name, ShowPrefix fun, ShowPrefix a) =>
+  m (P.Pass m tyname name uni fun b) -> Term tyname name uni fun b -> m (Term tyname name uni fun b)
 runCompilerPass mpasses t = do
   passes <- mpasses
   pedantic <- view (ccOpts . coPedantic)
-  res <- runExceptT $ P.runPass logVerbose pedantic passes t
+  res <- runExceptT $ P.runPass logVerbose logCert pedantic passes t
   throwingEither _Error res
 
 floatOutPasses :: Compiling m e uni fun a => m (P.Pass m TyName Name uni fun (Provenance a))
