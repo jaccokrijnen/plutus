@@ -183,9 +183,8 @@ runPass logger dumper checkConditions = runPass'
         for_ pre $ \c -> checkCondition c t
       t' <- lift $ mainPass t
       lift $ do
-        logger "dumping for cert"
         dumper (simpleShow pt)
-        dumper (simpleShow t)
+        -- dumper (simpleShow t)
         dumper (simpleShow t')
       when checkConditions $ do
         lift $ logger "checking postconditions"

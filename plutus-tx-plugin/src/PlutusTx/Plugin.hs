@@ -94,7 +94,7 @@ import PlutusIR.Compiler.Types qualified as PIR
 import PlutusIR.Transform.RewriteRules
 import PlutusIR.Transform.RewriteRules.RemoveTrace (rewriteRuleRemoveTrace)
 import Prettyprinter qualified as PP
-import System.IO (hPutStr, openBinaryTempFile)
+import System.IO (hPutStr, hPutStrLn, openBinaryTempFile)
 import System.IO.Unsafe (unsafePerformIO)
 
 import Data.Text (Text)
@@ -555,16 +555,20 @@ runCompiler moduleName opts expr = do
     let pirP = PIR.Program noProvenance plcVersion pirT
     when (opts ^. posDumpPir) . liftIO $ do
         dumpFlat (void pirP) "initial PIR program" (moduleName ++ "_initial.pir-flat")
-        -- dumpSimple (void pirP) "initial PIR program" (moduleName ++ "_initial.simple")
+
+    let fileName = (moduleName ++ "_simplified.simple")
+    (tPath, tHandle) <- liftIO $ openBinaryTempFile "." fileName
+    liftIO $ putStrLn $ "!!! dumping PIR ASTs to: " ++ show tPath
+    let dump = liftIO . hPutStrLn tHandle
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
-    spirP <- flip runReaderT pirCtx $ PIR.compileToReadable pirP
+    spirP <- flip runReaderT pirCtx $ PIR.compileToReadable dump pirP
     when (opts ^. posDumpPir) . liftIO $ do
         dumpFlat (void spirP) "simplified PIR program" (moduleName ++ "_simplified.pir-flat")
-        dumpSimple (void spirP) "simplified PIR program" (moduleName ++ "_simplified.simple")
+
 
     -- (Simplified) Pir -> Plc translation.
-    plcP <- flip runReaderT pirCtx $ PIR.compileReadableToPlc spirP
+    plcP <- flip runReaderT pirCtx $ PIR.compileReadableToPlc dump spirP
     when (opts ^. posDumpPlc) . liftIO $
         dumpFlat (void plcP) "typed PLC program" (moduleName ++ ".tplc-flat")
 
@@ -591,12 +595,6 @@ runCompiler moduleName opts expr = do
         -- also wrap the PLC Error annotations into Original provenances, to match our expected
         -- 'CompileError'
         liftEither $ first (view (re PIR._PLCError) . fmap PIR.Original) plcTcError
-
-      dumpSimple :: SimpleShow t => t -> String -> String -> IO ()
-      dumpSimple t desc fileName = do
-        (tPath, tHandle) <- openBinaryTempFile "." fileName
-        putStrLn $ "!!! dumping (simple)" ++ desc ++ " to " ++ show tPath
-        hPutStr tHandle $ simpleShow t
 
       dumpFlat :: Flat t => t -> String -> String -> IO ()
       dumpFlat t desc fileName = do

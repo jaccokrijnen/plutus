@@ -109,11 +109,12 @@ logCert = whenM isCert . traceM
 
 
 runCompilerPass :: (Compiling m e uni fun a, b ~ Provenance a, forall t. SimpleShow (uni t), SimpleShow tyname, SimpleShow name) =>
+  (String -> m ()) ->
   m (P.Pass m tyname name uni fun b) -> Term tyname name uni fun b -> m (Term tyname name uni fun b)
-runCompilerPass mpasses t = do
+runCompilerPass dumpCert mpasses t = do
   passes <- mpasses
   pedantic <- view (ccOpts . coPedantic)
-  res <- runExceptT $ P.runPass logVerbose logCert pedantic passes t
+  res <- runExceptT $ P.runPass logVerbose dumpCert pedantic passes t
   throwingEither _Error res
 
 floatOutPasses :: Compiling m e uni fun a => m (P.Pass m TyName Name uni fun (Provenance a))
@@ -193,20 +194,22 @@ compileToReadable
   :: forall m e uni fun a b
   . (Compiling m e uni fun a, b ~ Provenance a
   ,  forall t. (SimpleShow (uni t)))
-  => Program TyName Name uni fun b
+  => (String -> m ())
+  -> Program TyName Name uni fun b
   -> m (Program TyName Name uni fun b)
-compileToReadable (Program a v t) = do
+compileToReadable dumpCert (Program a v t) = do
   validateOpts v
   let pipeline :: m (P.Pass m TyName Name uni fun b)
       pipeline = ala Ap foldMap [typeCheckTerm, dce, simplifier, floatOutPasses]
-  Program a v <$> runCompilerPass pipeline t
+  Program a v <$> runCompilerPass dumpCert pipeline t
 
 -- | The 2nd half of the PIR compiler pipeline.
 -- Compiles a 'Term' into a PLC Term, by removing/translating step-by-step the PIR's language constructs to PLC.
 -- Note: the result *does* have globally unique names.
 compileReadableToPlc :: forall m e uni fun a b . (Compiling m e uni fun a, b ~ Provenance a, forall t. SimpleShow (uni t))
-  => Program TyName Name uni fun b -> m (PLCProgram uni fun a)
-compileReadableToPlc (Program a v t) = do
+  => (String -> m ()) ->
+  Program TyName Name uni fun b -> m (PLCProgram uni fun a)
+compileReadableToPlc dumpCert (Program a v t) = do
 
   let
     pipeline :: m (P.Pass m TyName Name uni fun b)
@@ -228,7 +231,7 @@ compileReadableToPlc (Program a v t) = do
         ]
 
     go =
-        runCompilerPass pipeline
+        runCompilerPass dumpCert pipeline
         >=> (<$ logVerbose "  !!! lowerTerm")
         >=> lowerTerm
 
@@ -236,10 +239,11 @@ compileReadableToPlc (Program a v t) = do
 
 --- | Compile a 'Program' into a PLC Program. Note: the result *does* have globally unique names.
 compileProgram :: (Compiling m e uni fun a, forall t. SimpleShow (uni t))
-            => Program TyName Name uni fun a -> m (PLCProgram uni fun a)
-compileProgram =
+            => (String -> m ()) ->
+            Program TyName Name uni fun a -> m (PLCProgram uni fun a)
+compileProgram dumpCert =
   (pure . original)
   >=> (<$ logDebug "!!! compileToReadable")
-  >=> compileToReadable
+  >=> (compileToReadable dumpCert)
   >=> (<$ logDebug "!!! compileReadableToPlc")
-  >=> compileReadableToPlc
+  >=> (compileReadableToPlc dumpCert)

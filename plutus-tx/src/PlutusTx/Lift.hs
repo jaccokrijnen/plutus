@@ -91,7 +91,7 @@ safeLift v x = do
         ucOpts = PLC.defaultCompilationOpts
           & PLC.coSimplifyOpts . UPLC.soMaxSimplifierIterations .~ 0
           & PLC.coSimplifyOpts . UPLC.soMaxCseIterations .~ 0
-    plc <- flip runReaderT ccConfig $ compileProgram (Program () v pir)
+    plc <- flip runReaderT ccConfig $ compileProgram (const (return ())) (Program () v pir)
     uplc <- flip runReaderT ucOpts $ PLC.compileProgram plc
     UPLC.Program _ _ db <- traverseOf UPLC.progTerm UPLC.deBruijnTerm uplc
     pure (void pir, void db)
@@ -262,7 +262,7 @@ typeCheckAgainst p (PLC.Program _ v plcTerm) = do
     -- this instance of only "lifting" it is safe to default to any builtin
     -- semantics variant, since the 'Lift' is impervious to builtins and will
     -- not generate code containing builtins.  See Note [Builtin semantics variants]
-    compiled <- flip runReaderT (toDefaultCompilationCtx tcConfig) $ compileProgram (Program () v applied)
+    compiled <- flip runReaderT (toDefaultCompilationCtx tcConfig) $ compileProgram (const (return ())) (Program () v applied)
     -- PLC errors are parameterized over PLC.Terms, whereas PIR errors over PIR.Terms and as such, these prism errors cannot be unified.
     -- We instead run the ExceptT, collect any PLC error and explicitly lift into a PIR error by wrapping with PIR._PLCError
     plcConcrete <- runExceptT $ void $ PLC.inferTypeOfProgram tcConfig compiled
