@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -237,17 +238,17 @@ deriving anyclass instance SimpleShow a => SimpleShow (NonEmpty a)
 -- deriving instance SimpleShow SrcSpans
 deriving anyclass instance SimpleShow ()
 instance SimpleShow Natural where
-  simpleShow = show
+  simpleShow = T.pack . show
 
 
 
 
 instance (forall a. SimpleShow (f a)) => SimpleShow (PLC.Some f) where
-  simpleShow (PLC.Some x) = parens True ("Some " ++  (simpleShow x))
+  simpleShow (PLC.Some x) = parens True ("Some " <>  (simpleShow x))
 
 
 instance Show (PLC.DefaultUni a) => SimpleShow (PLC.DefaultUni a) where
-  simpleShow x = parens True (show x)
+  simpleShow x = parens True (T.pack (show x))
 
 instance (forall a. SimpleShow (uni a)) => SimpleShow (PLC.SomeTypeIn uni) where
   simpleShow (SomeTypeIn x) = parens True (simpleShow x)
@@ -258,11 +259,12 @@ instance SimpleShow (PLC.Some (PLC.ValueOf PLC.DefaultUni)) where
 instance
   (forall t. SimpleShow (uni t), PLC.Closed uni, PLC.Everywhere uni SimpleShow) =>
   SimpleShow (PLC.ValueOf uni a) where
-  simpleShow (PLC.ValueOf uni x) = PLC.bring (Proxy @SimpleShow) uni $ parens True ("ValueOf " ++ simpleShow uni ++ simpleShow x)
+  simpleShow (PLC.ValueOf uni x) = PLC.bring (Proxy @SimpleShow) uni $
+    parens True ("ValueOf " <> simpleShow uni <> simpleShow x)
 
-instance SimpleShow BLS12_381.Pairing.MlResult where simpleShow = show
-instance SimpleShow BLS12_381.G2.Element where simpleShow = show
-instance SimpleShow BLS12_381.G1.Element where simpleShow = show
+instance SimpleShow BLS12_381.Pairing.MlResult where simpleShow = T.pack . show
+instance SimpleShow BLS12_381.G2.Element where simpleShow = T.pack . show
+instance SimpleShow BLS12_381.G1.Element where simpleShow = T.pack . show
 
 -- TODO: move orphan instances
 deriving anyclass instance SimpleShow Data

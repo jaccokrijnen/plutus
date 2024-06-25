@@ -98,6 +98,7 @@ import System.IO (hPutStr, hPutStrLn, openBinaryTempFile)
 import System.IO.Unsafe (unsafePerformIO)
 
 import Data.Text (Text)
+import Data.Text.IO qualified as T
 import GHC.Word
 import Text.SimpleShow
 
@@ -559,7 +560,7 @@ runCompiler moduleName opts expr = do
     let fileName = (moduleName ++ "_simplified.simple")
     (tPath, tHandle) <- liftIO $ openBinaryTempFile "." fileName
     liftIO $ putStrLn $ "!!! dumping PIR ASTs to: " ++ show tPath
-    let dump = liftIO . hPutStrLn tHandle
+    let dump = liftIO . T.hPutStrLn tHandle
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
     spirP <- flip runReaderT pirCtx $ PIR.compileToReadable dump pirP

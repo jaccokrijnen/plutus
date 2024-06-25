@@ -59,6 +59,7 @@ import Control.Monad.Except
 import Control.Monad.Extra (orM, whenM)
 import Data.Monoid
 import Data.Monoid.Extra (mwhen)
+import Data.Text (Text)
 import Debug.Trace (traceM)
 import PlutusCore qualified as PLC
 import PlutusCore.Error (throwingEither)
@@ -109,7 +110,7 @@ logCert = whenM isCert . traceM
 
 
 runCompilerPass :: (Compiling m e uni fun a, b ~ Provenance a, forall t. SimpleShow (uni t), SimpleShow tyname, SimpleShow name) =>
-  (String -> m ()) ->
+  (Text -> m ()) ->
   m (P.Pass m tyname name uni fun b) -> Term tyname name uni fun b -> m (Term tyname name uni fun b)
 runCompilerPass dumpCert mpasses t = do
   passes <- mpasses
@@ -194,7 +195,7 @@ compileToReadable
   :: forall m e uni fun a b
   . (Compiling m e uni fun a, b ~ Provenance a
   ,  forall t. (SimpleShow (uni t)))
-  => (String -> m ())
+  => (Text -> m ())
   -> Program TyName Name uni fun b
   -> m (Program TyName Name uni fun b)
 compileToReadable dumpCert (Program a v t) = do
@@ -207,7 +208,7 @@ compileToReadable dumpCert (Program a v t) = do
 -- Compiles a 'Term' into a PLC Term, by removing/translating step-by-step the PIR's language constructs to PLC.
 -- Note: the result *does* have globally unique names.
 compileReadableToPlc :: forall m e uni fun a b . (Compiling m e uni fun a, b ~ Provenance a, forall t. SimpleShow (uni t))
-  => (String -> m ()) ->
+  => (Text -> m ()) ->
   Program TyName Name uni fun b -> m (PLCProgram uni fun a)
 compileReadableToPlc dumpCert (Program a v t) = do
 
@@ -239,7 +240,7 @@ compileReadableToPlc dumpCert (Program a v t) = do
 
 --- | Compile a 'Program' into a PLC Program. Note: the result *does* have globally unique names.
 compileProgram :: (Compiling m e uni fun a, forall t. SimpleShow (uni t))
-            => (String -> m ()) ->
+            => (Text -> m ()) ->
             Program TyName Name uni fun a -> m (PLCProgram uni fun a)
 compileProgram dumpCert =
   (pure . original)

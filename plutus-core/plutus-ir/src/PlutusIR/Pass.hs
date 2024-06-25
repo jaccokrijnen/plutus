@@ -166,7 +166,7 @@ runPass
      , forall t. SimpleShow (uni t), SimpleShow tyname
      , SimpleShow name, SimpleShow fun, SimpleShow a)
   => (String -> m ())
-  -> (String -> m ())
+  -> (Text -> m ())
   -> Bool
   -> Pass m tyname name uni fun a
   -> Term tyname name uni fun a
