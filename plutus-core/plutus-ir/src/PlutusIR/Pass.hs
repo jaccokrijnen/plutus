@@ -185,7 +185,7 @@ runPass logger dumper checkConditions = runPass'
       lift $ do
         dumper (simpleShow pt)
         -- dumper (simpleShow t)
-        dumper (simpleShow t')
+        dumper (simpleShow (void t'))
       when checkConditions $ do
         lift $ logger "checking postconditions"
         for_ post $ \c -> checkBiCondition c t t'

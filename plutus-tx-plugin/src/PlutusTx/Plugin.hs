@@ -94,7 +94,7 @@ import PlutusIR.Compiler.Types qualified as PIR
 import PlutusIR.Transform.RewriteRules
 import PlutusIR.Transform.RewriteRules.RemoveTrace (rewriteRuleRemoveTrace)
 import Prettyprinter qualified as PP
-import System.IO (hPutStr, hPutStrLn, openBinaryTempFile)
+import System.IO (hClose, hPutStr, hPutStrLn, openBinaryTempFile)
 import System.IO.Unsafe (unsafePerformIO)
 
 import Data.Text (Text)
@@ -557,10 +557,12 @@ runCompiler moduleName opts expr = do
     when (opts ^. posDumpPir) . liftIO $ do
         dumpFlat (void pirP) "initial PIR program" (moduleName ++ "_initial.pir-flat")
 
-    let fileName = (moduleName ++ "_simplified.simple")
+    let fileName = (moduleName ++ "_pir_trace")
     (tPath, tHandle) <- liftIO $ openBinaryTempFile "." fileName
     liftIO $ putStrLn $ "!!! dumping PIR ASTs to: " ++ show tPath
     let dump = liftIO . T.hPutStrLn tHandle
+    -- Dump inital PIR term, TODO: use dump
+    liftIO (T.hPutStrLn tHandle (simpleShow (void pirT)))
 
     -- Pir -> (Simplified) Pir pass. We can then dump/store a more legible PIR program.
     spirP <- flip runReaderT pirCtx $ PIR.compileToReadable dump pirP
@@ -572,6 +574,8 @@ runCompiler moduleName opts expr = do
     plcP <- flip runReaderT pirCtx $ PIR.compileReadableToPlc dump spirP
     when (opts ^. posDumpPlc) . liftIO $
         dumpFlat (void plcP) "typed PLC program" (moduleName ++ ".tplc-flat")
+
+    liftIO $ hClose tHandle
 
     -- We do this after dumping the programs so that if we fail typechecking we still get the dump.
     when (opts ^. posDoTypecheck) . void $
