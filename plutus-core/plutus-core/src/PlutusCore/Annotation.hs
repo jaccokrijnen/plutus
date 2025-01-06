@@ -23,6 +23,7 @@ import Data.MonoTraversable
 import Data.Semigroup (Any (..))
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text qualified as T
 import Flat (Flat (..))
 import GHC.Generics
 import Prettyprinter
@@ -87,7 +88,13 @@ data SrcSpan = SrcSpan
     -- is the line break).
     }
     deriving stock (Eq, Ord, Generic)
-    deriving anyclass (Flat, Hashable, NFData, SimpleShow)
+    deriving anyclass (Flat, Hashable, NFData)
+
+-- Cannot directly derive SimpleShow using Generic, since an instance of SimpleShow FilePath
+-- ( = String) results in overlapping instances, which do not work with QuantifiedConstraints
+-- such as Permits1 (see instance of Closed DefaultUni, assoc type Everywhere)
+instance SimpleShow SrcSpan where
+  simpleShow (SrcSpan f l c l' c') = simpleShow (T.pack f, l, c, l', c')
 
 instance Show SrcSpan where
     showsPrec _ s =

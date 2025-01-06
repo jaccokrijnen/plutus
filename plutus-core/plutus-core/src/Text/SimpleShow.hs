@@ -10,6 +10,7 @@ module Text.SimpleShow
   ) where
 
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS (unpack)
 import Data.Set (Set, toList)
 import Data.Text (Text, pack, unpack)
 import GHC.Generics
@@ -98,7 +99,7 @@ instance SimpleShow Integer where
   simpleShow = pack . show
 
 instance SimpleShow ByteString where
-  simpleShow = pack . show
+  simpleShow = simpleShow . BS.unpack
 
 instance SimpleShow Bool where
   simpleShow = pack . show
@@ -115,6 +116,9 @@ instance SimpleShow Text where
 instance SimpleShow (GHC.Word.Word64) where
   simpleShow = pack . show
 
+instance SimpleShow (GHC.Word.Word8) where
+  simpleShow x = parens True ("Word8 " <> (pack (show x)))
+
 instance SimpleShow a => SimpleShow (Set a) where
   simpleShow x = parens True ("Set " <> simpleShow (toList x))
 
@@ -124,8 +128,17 @@ instance (SimpleShow a, SimpleShow b) => SimpleShow (a, b) where
 
 instance SimpleShow a => SimpleShow [a]
 
-instance {-# OVERLAPPING #-} SimpleShow String where
-  simpleShow = pack . show
+-- instance {-# OVERLAPPING #-} SimpleShow [Char] where
+--   simpleShow = pack . show
+
+instance
+  ( SimpleShow a
+  , SimpleShow b
+  , SimpleShow c
+  , SimpleShow d
+  , SimpleShow e
+  )
+  => SimpleShow (a, b, c, d, e)
 
 -- Examples
 
