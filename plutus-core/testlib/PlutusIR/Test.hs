@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
@@ -46,6 +47,8 @@ import Data.Text.IO qualified as T
 import Prettyprinter
 import Prettyprinter.Render.Text
 
+import Text.SimpleShow
+
 instance
   ( PLC.GEq uni
   , PLC.Typecheckable uni fun
@@ -57,6 +60,11 @@ instance
   , Default (PLC.CostingPart uni fun)
   , Default (BuiltinsInfo uni fun)
   , Default (RewriteRules uni fun)
+
+  , forall t. SimpleShow (uni t)
+  , SimpleShow fun
+  , SimpleShow a
+  , PLC.Everywhere uni SimpleShow
   ) =>
   ToTPlc (PIR.Program PIR.TyName PIR.Name uni fun a) uni fun
   where
@@ -74,6 +82,11 @@ instance
   , Default (PLC.CostingPart uni fun)
   , Default (BuiltinsInfo uni fun)
   , Default (RewriteRules uni fun)
+
+  , forall t. SimpleShow (uni t)
+  , SimpleShow fun
+  , SimpleShow a
+  , PLC.Everywhere uni SimpleShow
   ) =>
   ToUPlc (PIR.Program PIR.TyName PIR.Name uni fun a) uni fun
   where
@@ -101,6 +114,12 @@ compileWithOpts ::
   , Default (BuiltinsInfo uni fun)
   , Default (PLC.CostingPart uni fun)
   , Default (RewriteRules uni fun)
+
+
+  , forall t. SimpleShow (uni t)
+  , SimpleShow fun
+  , SimpleShow a
+  , PLC.Everywhere uni SimpleShow
   ) =>
   (CompilationCtx uni fun a -> CompilationCtx uni fun a) ->
   PIR.Program PIR.TyName PIR.Name uni fun a ->
@@ -111,7 +130,7 @@ compileWithOpts optsMod pir = do
   tcConfig <- PLC.getDefTypeCheckConfig noProvenance
   let pirCtx = optsMod (toDefaultCompilationCtx tcConfig)
   flip runReaderT pirCtx $ runQuoteT $ do
-    compiled <- compileProgram pir
+    compiled <- compileProgram (\_ -> return ()) pir
     -- PLC errors are parameterized over PLC.Terms, whereas PIR errors over PIR.Terms
     -- and as such, these prism errors cannot be unified.
     -- We instead run the ExceptT, collect any PLC error and explicitly lift into a PIR
@@ -180,7 +199,10 @@ goldenPlcFromPir = goldenPirM $ \ast -> ppCatch $ do
 
 goldenPlcFromPirScott ::
   (Ord a, Typeable a, Pretty a
-  , prog ~ PIR.Program PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun a) =>
+  , prog ~ PIR.Program PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun a
+
+  , SimpleShow a
+  ) =>
   Parser prog ->
   String ->
   TestNested
